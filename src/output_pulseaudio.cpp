@@ -7,8 +7,8 @@
 #include <mutex>
 #include <sstream>
 
-#include "foobar2000-sdk/foobar2000/SDK/core_api.h"
-#include "foobar2000-sdk/foobar2000/SDK/output.h"
+#include "core_api.h"
+#include "output.h"
 #include "pulse.h"
 
 namespace {
