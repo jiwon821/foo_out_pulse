@@ -79,7 +79,6 @@ static pa_context_get_sink_input_info g_pa_context_get_sink_input_info;
 static pa_context_subscribe g_pa_context_subscribe;
 static pa_context_set_subscribe_callback g_pa_context_set_subscribe_callback;
 static bool g_pa_is_loaded = false;
-static bool is_using_winelib = false;
 
 static const GUID guid_cfg_pulseaudio_branch = {
     0x61979096,
@@ -250,7 +249,7 @@ class output_pulse : public output_v4 {
     if (proplist != NULL) g_pa_proplist_free(proplist);
 
     g_pa_context_set_state_callback(context, context_state_cb, this);
-    const char* server = is_using_winelib ? NULL : "127.0.0.1";
+    const char* server = "127.0.0.1";
     if (g_pa_context_connect(context, server, (pa_context_flags_t)0, NULL) <
             0 ||
         context_wait(context, mainloop)) {
@@ -468,11 +467,7 @@ class output_pulse : public output_v4 {
                          0x4992,
                          {0x76, 0x18, 0x13, 0x8b, 0xa2, 0x1, 0xd7, 0xa6}};
     if (load_pulse_dll()) {
-      if (is_using_winelib) {
-        p_callback.on_device(device, "native", 6);
-      } else {
         p_callback.on_device(device, "localhost", 9);
-      }
     }
   }
   static GUID g_get_guid() {
@@ -494,7 +489,7 @@ class output_pulse : public output_v4 {
 
  private:
   const double offset = 0.05;
-
+  
   pa_context* context = NULL;
   pa_threaded_mainloop* mainloop = NULL;
   pa_stream* stream = NULL;
@@ -678,7 +673,7 @@ class output_pulse : public output_v4 {
                       g_pa_context_errno(context));
         return 0;
       }
-
+      
       size_t delta =
           pfc::min_t(m_incoming.get_size() - m_incoming_ptr, cw_samples);
 
@@ -1101,12 +1096,6 @@ class output_pulse : public output_v4 {
     g_pa_context_set_subscribe_callback =
         (pa_context_set_subscribe_callback)GetProcAddress(
             libpulse, "pa_context_set_subscribe_callback");
-
-    void* winelib = GetProcAddress(libpulse, "foo_out_pulse_winelib_dll");
-
-    is_using_winelib = winelib != NULL;
-    console::info(is_using_winelib ? "Pulseaudio: using winelib libpulse"
-                                   : "Pulseaudio: Using Windows libpulse");
 
     if (g_pa_strerror == NULL || g_pa_threaded_mainloop_new == NULL ||
         g_pa_threaded_mainloop_free == NULL ||
