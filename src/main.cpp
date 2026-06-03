@@ -1,5 +1,4 @@
 #include "stdafx.h"
-// PCH ^
 
 const char* about = "Copyright (c) sammoth, 2020\n"
 "\n"
