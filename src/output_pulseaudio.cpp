@@ -13,65 +13,6 @@
 namespace {
 
 
-static const GUID guid_cfg_pulseaudio_branch = {
-    0x61979096,
-    0x1158,
-    0x4860,
-    {0xb0, 0xcc, 0x6f, 0x53, 0xf, 0x35, 0xaf, 0x26}};
-static const GUID guid_cfg_pulseaudio_fade_out_seek = {
-    0x319d2507,
-    0xe2aa,
-    0x40e2,
-    {0xa1, 0xec, 0x4e, 0x94, 0xf1, 0xdd, 0x12, 0x8a}};
-static const GUID guid_cfg_pulseaudio_fade_in_seek = {
-    0x90ae1a07,
-    0xcd2b,
-    0x481c,
-    {0xb2, 0x6a, 0xf7, 0x36, 0x83, 0xec, 0xf6, 0x40}};
-static const GUID guid_cfg_pulseaudio_fade_out_track = {
-    0xe136e959,
-    0x929b,
-    0x4005,
-    {0xaa, 0x9e, 0x8e, 0x8b, 0x91, 0x5b, 0x5d, 0x2}};
-static const GUID guid_cfg_pulseaudio_fade_in_track = {
-    0x6fb3670, 0x4e7d, 0x4601, {0x83, 0xa6, 0xed, 0x44, 0x3e, 0xb1, 0xe1, 0x7}};
-static const GUID guid_cfg_pulseaudio_minreq_workaround = {
-    0xe176bd02, 0xcbc, 0x4fbd, {0x8f, 0x1a, 0xf2, 0x3a, 0x2a, 0xb7, 0x8, 0x86}};
-static const GUID guid_cfg_pulseaudio_fade_out_stop = {
-    0xbf045192,
-    0xde9b,
-    0x432d,
-    {0xa5, 0xd9, 0x36, 0xb1, 0x19, 0x57, 0x6a, 0x61}};
-static const GUID guid_cfg_pulseaudio_prebuffer = {
-    0x64cd1e28,
-    0x87ea,
-    0x41e5,
-    {0xaf, 0x3d, 0xc6, 0xcd, 0x2f, 0x52, 0xac, 0xee}};
-
-static advconfig_branch_factory g_pulseaudio_output_branch(
-    "Pulseaudio output", guid_cfg_pulseaudio_branch,
-    advconfig_branch::guid_branch_playback, 0);
-static advconfig_integer_factory cfg_pulseaudio_seek_fade_out(
-    "Fade out on seek (milliseconds)", guid_cfg_pulseaudio_fade_out_seek,
-    guid_cfg_pulseaudio_branch, 0, 15, 0, 1000, 0);
-static advconfig_integer_factory cfg_pulseaudio_seek_fade_in(
-    "Fade in on seek (milliseconds)", guid_cfg_pulseaudio_fade_in_seek,
-    guid_cfg_pulseaudio_branch, 0, 15, 0, 1000, 0);
-static advconfig_integer_factory cfg_pulseaudio_track_fade_out(
-    "Fade out on manual track change (milliseconds)",
-    guid_cfg_pulseaudio_fade_out_track, guid_cfg_pulseaudio_branch, 0, 0, 0,
-    1000, 0);
-static advconfig_integer_factory cfg_pulseaudio_track_fade_in(
-    "Fade in on manual track change (milliseconds)",
-    guid_cfg_pulseaudio_fade_in_track, guid_cfg_pulseaudio_branch, 0, 0, 0,
-    1000, 0);
-static advconfig_checkbox_factory cfg_pulseaudio_minreq_workaround(
-    "Enable workaround for driver issue", guid_cfg_pulseaudio_minreq_workaround,
-    guid_cfg_pulseaudio_branch, 0, false);
-static advconfig_integer_factory cfg_pulseaudio_prebuf(
-    "Request prebuffer (milliseconds)", guid_cfg_pulseaudio_prebuffer,
-    guid_cfg_pulseaudio_branch, 0, 200, 0, 100000, 0);
-
 class lookback_buffer {
  public:
   lookback_buffer() : max_size_(0), buf_(), out_buf_(), lookback_(0){};
