@@ -9,7 +9,6 @@
 
 #include "core_api.h"
 #include "output.h"
-#include "pulse.h"
 
 namespace {
 
