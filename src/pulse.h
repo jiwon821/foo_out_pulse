@@ -7,7 +7,7 @@
 
 #define PA_CHANNELS_MAX 32U
 
-typedef bool pa_bool_t;  // check
+typedef bool pa_bool_t;
 typedef uint64_t pa_usec_t;
 typedef struct pa_mainloop pa_mainloop;
 typedef struct pa_operation pa_operation;
@@ -55,7 +55,7 @@ typedef enum pa_sample_format {
 
 typedef struct pa_sample_spec {
     pa_sample_format_t format;
-    uint32_t rate;  // sample rate eg. 44100
+    uint32_t rate;
     uint8_t channels;
 } pa_sample_spec;
 
@@ -129,7 +129,7 @@ typedef struct pa_buffer_attr {
 
 typedef struct pa_channel_map {
     uint8_t channels;
-    pa_channel_position_t map[32U];  // channel labels
+    pa_channel_position_t map[32U];
 } pa_channel_map;
 
 typedef const char *(__cdecl *pa_strerror)(int error);
