@@ -1,50 +1,73 @@
 #include "stdafx.h"
 #include "lookback_buffer.h"
 
-void lookback_buffer::queue(void* in, size_t nbytes)
+lookback_buffer::lookback_buffer()
 {
-    std::lock_guard<std::mutex> lock(buffer_mutex_);
-    pfc::dynamic_assert(nbytes <= max_size_);
-    size_t endspace = max_size_ - head_;
-    memcpy(buf_.get() + head_, in, pfc::min_t(nbytes, endspace));
-    if (endspace < nbytes) {
-        memcpy(buf_.get(), (BYTE*)in + endspace, nbytes - endspace);
-    }
-    head_ = (head_ + nbytes) % max_size_;
-    lookback_ = pfc::min_t(max_size_, lookback_ + nbytes);
+    buffer = std::make_unique<uint8_t>();
+    buffer_size = 0;
+    head = 0;
+    lookback = 0;
+    shared_buffer = std::make_shared<uint8_t>();
 }
 
-size_t lookback_buffer::read_back(size_t distance)
+void lookback_buffer::queue(void *data, size_t n)
 {
-    std::lock_guard<std::mutex> lock(buffer_mutex_);
-    size_t to_read = pfc::min_t(distance, lookback_);
-    if (head_ < to_read) {
-        memcpy(out_buf_.get(), buf_.get() + max_size_ - (to_read - head_),
-            to_read - head_);
-        memcpy(out_buf_.get() + to_read - head_, buf_.get(), head_);
-    }
-    else {
-        memcpy(out_buf_.get(), buf_.get() + head_ - to_read, to_read);
-    }
-    head_ = 0;
-    lookback_ = 0;
+    size_t available_size;
 
+    // this would raise some foobar2000 bug handling
+    pfc::dynamic_assert(n <= buffer_size);
+    std::lock_guard<std::mutex> lock(buffer_mutex);
+
+    // copy as much data as we can
+    available_size = buffer_size - head;
+    memcpy(buffer.get() + head, data, pfc::min_t(n, available_size));
+
+    // so in this case we mercilessly overwrite the head area
+    if (available_size < n)
+    {
+        memcpy(buffer.get(), (uint8_t *)data + available_size, n - available_size);
+    }
+
+    head = (head + n) % buffer_size;
+    lookback = pfc::min_t(buffer_size, lookback + n);
+}
+
+size_t lookback_buffer::read_back(size_t n)
+{
+    size_t read_size;
+    size_t offset;
+
+    std::lock_guard<std::mutex> lock(buffer_mutex);
+
+    read_size = pfc::min_t(n, lookback);
+    offset = read_size - head;
+
+    if (head < read_size)
+    {
+        // copy offset bytes from the end and then copy bytes from the start
+        memcpy(shared_buffer.get(), buffer.get() + buffer_size - offset, offset);
+        memcpy(shared_buffer.get() + offset, buffer.get(), head);
+    }
+    else
+    {
+        // uhh, surely the offset cannot be negative so this is probably for when head == read_size
+        // TODO: check what's up
+        memcpy(shared_buffer.get(), buffer.get() + offset, read_size);
+    }
+
+    // reset offsets
+    head = 0;
+    lookback = 0;
     return to_read;
 }
 
-void lookback_buffer::reset(size_t size)
+void lookback_buffer::reset(size_t n)
 {
     std::lock_guard<std::mutex> lock(buffer_mutex_);
-    head_ = 0;
-    lookback_ = 0;
-    buf_ = std::unique_ptr<BYTE>(new BYTE[size]);
-    out_buf_ = std::shared_ptr<BYTE>(new BYTE[size]);
-    max_size_ = size;
-}
 
-void lookback_buffer::reset()
-{
-    std::lock_guard<std::mutex> lock(buffer_mutex_);
-    head_ = 0;
-    lookback_ = 0;
+    head = 0;
+    lookback = 0;
+    buffer_size = n;
+    buffer = std::make_unique<uint8_t>(n);
+    shared_buffer = std::make_shared<uint8_t>(n);
 }
