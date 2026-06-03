@@ -1,5 +1,5 @@
 #include "stdafx.h"
-// PCH ^
+#include "output_pulseaudio.h"
 
 #include <pathcch.h>
 #include <windows.h>
