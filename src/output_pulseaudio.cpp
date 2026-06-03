@@ -11,7 +11,6 @@
 #include "core_api.h"
 #include "output.h"
 
-
 output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_dither, t_uint32 p_bitdepth)
       : buffer_length(p_buffer_length),
         m_incoming_ptr(0),
@@ -32,6 +31,9 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
         next_write_relative(false),
         volume(0)
 {
+    pfc::string8 pulseaudio_server_string;
+    std::stringstream connection_info;
+
     if (!load_pulse_dll())
     {
         stop();
@@ -47,10 +49,12 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
         stop();
         return;
     }
+
+    // just puts foobar2000 to everything
     pa_proplist* proplist = g_pa_proplist_new();
-    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_NAME, "foobar2000");
-    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_ID, "foobar2000");
-    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_ICON_NAME, "foobar2000");
+    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_NAME, APPLICATION_NAME);
+    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_ID, APPLICATION_NAME);
+    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_ICON_NAME, APPLICATION_NAME);
 
     pa_mainloop_api* api;
     g_pa_threaded_mainloop_lock(mainloop);
@@ -59,8 +63,13 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
     if (proplist != NULL) g_pa_proplist_free(proplist);
 
     g_pa_context_set_state_callback(context, context_state_cb, this);
-    const char* server = "127.0.0.1";
-    if (g_pa_context_connect(context, server, (pa_context_flags_t)0, NULL) < 0 || context_wait(context, mainloop))
+
+    // read server connection string from settings and connect
+    cfg_pulseaudio_server.get(pulseaudio_server_string);
+    connection_info << OUTPUT_NAME << ": connecting to " << pulseaudio_server_string;
+    console::info(connection_info.str().c_str());
+
+    if (g_pa_context_connect(context, pulseaudio_server_string, (pa_context_flags_t)0, NULL) < 0 || context_wait(context, mainloop))
     {
         g_pa_context_unref(context);
         context = NULL;
@@ -371,8 +380,7 @@ void output_pulse::g_advanced_settings_popup(HWND p_parent, POINT p_menupoint)
 
 const char* output_pulse::g_get_name()
 {
-    // TODO: define this somewhere as we might use this in main.cpp also
-    return "Pulseaudio";
+    return OUTPUT_NAME;
 }
 
 GUID output_pulse::g_get_guid()
