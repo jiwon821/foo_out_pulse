@@ -1,6 +1,8 @@
 #pragma once
-
+#include "stdafx.h"
 #include "pulse.h"
+
+#include <sstream>
 
 // seems to be unused
 //typedef HRESULT(CALLBACK* LPFNDLLFUNC1)(DWORD, UINT*);
@@ -94,3 +96,209 @@ static advconfig_integer_factory cfg_pulseaudio_track_fade_out("Fade out on manu
 static advconfig_integer_factory cfg_pulseaudio_track_fade_in("Fade in on manual track change (milliseconds)", guid_cfg_pulseaudio_fade_in_track, guid_cfg_pulseaudio_branch, 0, 0, 0, 1000, 0);
 static advconfig_checkbox_factory cfg_pulseaudio_minreq_workaround("Enable workaround for driver issue", guid_cfg_pulseaudio_minreq_workaround, guid_cfg_pulseaudio_branch, 0, false);
 static advconfig_integer_factory cfg_pulseaudio_prebuf("Request prebuffer (milliseconds)", guid_cfg_pulseaudio_prebuffer, guid_cfg_pulseaudio_branch, 0, 200, 0, 100000, 0);
+
+class output_pulse : public output_v4 {
+public:
+    typedef struct fade_in {
+        bool active = false;
+        size_t total_samples;
+        size_t progress;
+    } fade;
+    output_pulse(const GUID& p_device, double p_buffer_length, bool p_dither,
+        t_uint32 p_bitdepth);
+    ~output_pulse();
+
+    void pause(bool);
+    void volume_set(double);
+    void flush();
+    void flush_changing_track();
+
+    void update(bool& p_ready);
+    size_t update_v2();
+    void force_play();
+    double get_latency();
+
+    void process_samples(const audio_chunk& p_chunk);
+    bool is_progressing();
+    pfc::eventHandle_t get_trigger_event();
+    static void g_enum_devices(output_device_enum_callback&);
+
+    static bool g_advanced_settings_query() { return false; }
+    static bool g_needs_bitdepth_config() { return false; }
+    static bool g_needs_dither_config() { return false; }
+    static bool g_needs_device_list_prefixes() { return true; }
+    static bool g_supports_multiple_streams() { return false; }
+    static bool g_is_high_latency() { return true; }
+    static uint32_t g_extra_flags() { return 0; }
+    static void g_advanced_settings_popup(HWND p_parent, POINT p_menupoint) {}
+    static const char* g_get_name() { return "Pulseaudio"; }
+    static GUID g_get_guid();
+private:
+    const double offset = 0.05;
+
+    pa_context* context = NULL;
+    pa_threaded_mainloop* mainloop = NULL;
+    pa_stream* stream = NULL;
+
+    pfc::array_t<audio_sample, pfc::alloc_fast_aggressive> m_incoming;
+    size_t m_incoming_ptr;
+    t_samplespec m_incoming_spec, m_active_spec;
+
+    double buffer_length;
+
+    pa_volume_t volume;
+
+    bool progressing;
+    bool draining;
+    bool drained;
+
+    bool rewind_active;
+    lookback_buffer rewind_buffer;
+    const size_t cfg_seek_fade_in;
+    const size_t cfg_seek_fade_out;
+    const size_t cfg_track_fade_in;
+    const size_t cfg_track_fade_out;
+    size_t fade_in_next_ms;
+    fade active_fade_in;
+    bool next_write_relative;
+
+    pfc::event trigger_update;
+
+    service_ptr_t<playback_control> playback_control;
+
+    static bool context_wait(pa_context* ctx, pa_threaded_mainloop* ml) {
+        pa_context_state_t state;
+        while ((state = g_pa_context_get_state(ctx)) != PA_CONTEXT_READY) {
+            if (state == PA_CONTEXT_FAILED || state == PA_CONTEXT_TERMINATED)
+                return false;
+            g_pa_threaded_mainloop_wait(ml);
+        }
+        return 0;
+    }
+
+    static void context_subscribe_cb(pa_context* c,
+        pa_subscription_event_type_t t, uint32_t idx,
+        void* userdata) {
+        if ((pa_subscription_event_type)(t & PA_SUBSCRIPTION_EVENT_SINK_INPUT) ==
+            PA_SUBSCRIPTION_EVENT_SINK_INPUT) {
+            output_pulse* output = (output_pulse*)userdata;
+            if (output->stream == NULL) return;
+
+            if (g_pa_stream_get_index(output->stream) == idx) {
+                g_pa_context_get_sink_input_info(output->context, idx,
+                    sink_input_info_cb, output);
+            }
+        }
+    }
+
+    static void sink_input_info_cb(pa_context* c, const pa_sink_input_info* i,
+        int eol, void* userdata) {
+        output_pulse* output = (output_pulse*)userdata;
+        if (i == NULL || output == NULL) return;
+
+        if (g_pa_cvolume_valid(&i->volume) &&
+            output->volume != i->volume.values[0]) {
+            float volume_db = (float)g_pa_sw_volume_to_dB(i->volume.values[0]);
+            fb2k::inMainThread(
+                [volume_db]() { playback_control::get()->set_volume(volume_db); });
+        }
+    }
+
+    static void stop() {
+        fb2k::inMainThread([]() { playback_control::get()->stop(); });
+    }
+
+    static void context_state_cb(pa_context* ctx, void* userdata) {
+        output_pulse* output = (output_pulse*)userdata;
+        std::stringstream s;
+        switch (g_pa_context_get_state(ctx)) {
+        case PA_CONTEXT_FAILED:
+            console_error("connection failed", g_pa_context_errno(ctx));
+            stop();
+        case PA_CONTEXT_READY:
+        case PA_CONTEXT_TERMINATED:
+            g_pa_threaded_mainloop_signal(output->mainloop, 0);
+        default:
+            break;
+        }
+    }
+
+    static int stream_wait(pa_stream* s, pa_threaded_mainloop* ml) {
+        pa_stream_state_t state;
+
+        while ((state = g_pa_stream_get_state(s)) != PA_STREAM_READY) {
+            if (state == PA_STREAM_FAILED || state == PA_STREAM_TERMINATED) return -1;
+            g_pa_threaded_mainloop_wait(ml);
+        }
+        return 0;
+    }
+
+    static void stream_state_cb(pa_stream* s, void* userdata) {
+        pa_threaded_mainloop* ml = (pa_threaded_mainloop*)userdata;
+
+        switch (g_pa_stream_get_state(s)) {
+        case PA_STREAM_READY:
+        case PA_STREAM_FAILED:
+        case PA_STREAM_TERMINATED:
+            g_pa_threaded_mainloop_signal(ml, 0);
+        default:
+            break;
+        }
+    }
+
+    static void stream_started_cb(pa_stream* s, void* userdata) {
+        output_pulse* output = (output_pulse*)userdata;
+        output->progressing = true;
+    }
+
+    static void stream_underflow_cb(pa_stream* s, void* userdata) {
+        output_pulse* output = (output_pulse*)userdata;
+        output->progressing = false;
+        output->trigger_update.set_state(true);
+    }
+
+    static void stream_write_cb(pa_stream* s, size_t nbytes, void* userdata) {
+        output_pulse* output = (output_pulse*)userdata;
+        output->trigger_update.set_state(true);
+    }
+
+    size_t write();
+    void fade_section(audio_sample* data, size_t num_samples_to_write,
+        size_t total_fade_samples, size_t start_at_sample,
+        size_t num_channels, bool fade_in);
+
+    void write_fade_out(size_t);
+
+    static void stream_success_cb(pa_stream* s, int success, void* userdata) {
+        g_pa_threaded_mainloop_signal((pa_threaded_mainloop*)userdata, 0);
+    }
+
+    void wait_for_op(pa_operation* op);
+
+    void close_stream();
+    void open_incoming_spec();
+
+    static void console_error(const char* prefix, int error_code) {
+        std::stringstream s;
+        s << "Pulseaudio: ";
+        s << prefix;
+
+        if (error_code != 0) {
+            const char* error = g_pa_strerror(error_code);
+            if (error != NULL) {
+                s << ": " << error;
+            }
+        }
+
+        console::error(s.str().c_str());
+    }
+
+    static void stream_drained_cb(pa_stream* s, int success, void* userdata) {
+        output_pulse* output = (output_pulse*)userdata;
+        output->draining = false;
+        output->drained = true;
+        output->trigger_update.set_state(true);
+    }
+
+    static bool load_pulse_dll();
+};
