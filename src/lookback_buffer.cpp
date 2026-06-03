@@ -58,12 +58,12 @@ size_t lookback_buffer::read_back(size_t n)
     // reset offsets
     head = 0;
     lookback = 0;
-    return to_read;
+    return read_size;
 }
 
 void lookback_buffer::reset(size_t n)
 {
-    std::lock_guard<std::mutex> lock(buffer_mutex_);
+    std::lock_guard<std::mutex> lock(buffer_mutex);
 
     head = 0;
     lookback = 0;

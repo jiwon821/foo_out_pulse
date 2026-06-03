@@ -1,6 +1,4 @@
 #pragma once
-// required here due to 'typedef unsigned char BYTE'
-#include "stdafx.h"
 
 #include <mutex>
 

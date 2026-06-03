@@ -673,7 +673,7 @@ void output_pulse::write_fade_out(size_t fade_ms)
 
     if (rewind_bytes > 0)
     {
-        std::shared_ptr<BYTE> rewind_data = rewind_buffer.out_buf_;
+        std::shared_ptr<uint8_t> rewind_data = rewind_buffer.shared_buffer;
         int64_t fade_samples = pfc::min_t(rewind_bytes / 4 / m_active_spec.m_channels, (int64_t)m_active_spec.time_to_samples(0.001 * fade_ms) * m_active_spec.m_channels);
         fade_section((audio_sample*)rewind_data.get(), (size_t)fade_samples, (size_t)fade_samples, 0, m_active_spec.m_channels, false);
 
