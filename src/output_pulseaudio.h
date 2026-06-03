@@ -90,6 +90,8 @@ static const GUID guid_cfg_pulseaudio_prebuffer         = {0x64cd1e28, 0x87ea, 0
 // moved here from g_enum_devices, I guess it's used for getting the pulseaudio output "device" to foobar2000
 static const GUID guid_cfg_pulseaudio_device            = {0x08bf1c19, 0x5b9d, 0x4992, {0x76, 0x18, 0x13, 0x8b, 0xa2, 0x01, 0xd7, 0xa6} };
 static const GUID guid_cfg_pulseaudio_server            = {0xbf045193, 0xde9b, 0x432d, {0xa5, 0xd9, 0x36, 0xb1, 0x19, 0x57, 0x6a, 0x61} };
+// moved here from g_get_guid, seems to be the guid of the component
+static const GUID guid_cfg_pulseaudio_output            = {0x0fe94df9, 0xc8e2, 0x40a1, {0x40, 0xa1, 0xb1, 0x2a, 0x4a, 0x6c, 0xe4, 0x9e} };
 
 // and the actual settings under advanced settings
 static advconfig_branch_factory g_pulseaudio_output_branch(OUTPUT_NAME " output",

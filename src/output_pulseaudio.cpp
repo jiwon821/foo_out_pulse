@@ -17,17 +17,14 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
         progressing(false),
         draining(false),
         drained(false),
-        cfg_seek_fade_out(pfc::min_t((size_t)cfg_pulseaudio_seek_fade_out,
-                                     (size_t)(1000 * p_buffer_length))),
+        cfg_seek_fade_out(pfc::min_t((size_t)cfg_pulseaudio_seek_fade_out, (size_t)(1000 * p_buffer_length))),
         cfg_seek_fade_in((size_t)cfg_pulseaudio_seek_fade_in),
-        cfg_track_fade_out(pfc::min_t((size_t)cfg_pulseaudio_track_fade_out,
-                                      (size_t)(1000 * p_buffer_length))),
+        cfg_track_fade_out(pfc::min_t((size_t)cfg_pulseaudio_track_fade_out, (size_t)(1000 * p_buffer_length))),
         cfg_track_fade_in((size_t)cfg_pulseaudio_track_fade_in),
         fade_in_next_ms(0),
         active_fade_in(),
         rewind_buffer(),
-        rewind_active(cfg_pulseaudio_seek_fade_out > 0 ||
-                      cfg_pulseaudio_track_fade_out > 0),
+        rewind_active(cfg_pulseaudio_seek_fade_out > 0 || cfg_pulseaudio_track_fade_out > 0),
         next_write_relative(false),
         volume(0)
 {
@@ -60,7 +57,10 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
     g_pa_threaded_mainloop_lock(mainloop);
     api = g_pa_threaded_mainloop_get_api(mainloop);
     context = g_pa_context_new_with_proplist(api, "foobar2000", proplist);
-    if (proplist != NULL) g_pa_proplist_free(proplist);
+    if (proplist)
+    {
+        g_pa_proplist_free(proplist);
+    ]
 
     g_pa_context_set_state_callback(context, context_state_cb, this);
 
@@ -83,7 +83,7 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
     }
 
     pa_operation* op = g_pa_context_subscribe(context, PA_SUBSCRIPTION_MASK_SINK_INPUT, NULL, NULL);
-    if (op != NULL)
+    if (op)
     {
         g_pa_operation_unref(op);
     }
@@ -96,10 +96,10 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
 
 output_pulse::~output_pulse()
 {
-    if (mainloop != NULL)
+    if (mainloop)
     {
         g_pa_threaded_mainloop_lock(mainloop);
-        if (context != NULL)
+        if (context)
         {
             g_pa_context_disconnect(context);
             g_pa_context_set_event_callback(context, NULL, NULL);
@@ -117,14 +117,14 @@ output_pulse::~output_pulse()
 
 void output_pulse::pause(bool p_state)
 {
-    if (stream == NULL)
+    if (!stream)
     {
         return;
     }
 
     g_pa_threaded_mainloop_lock(mainloop);
     pa_operation* op = g_pa_stream_cork(stream, p_state ? 1 : 0, NULL, NULL);
-    if (op != NULL)
+    if (op)
     {
       g_pa_operation_unref(op);
     }
@@ -133,7 +133,7 @@ void output_pulse::pause(bool p_state)
 
 void output_pulse::volume_set(double p_val)
 {
-    if (stream == NULL)
+    if (!stream)
     {
         return;
     }
@@ -149,7 +149,7 @@ void output_pulse::volume_set(double p_val)
 
     g_pa_threaded_mainloop_lock(mainloop);
     pa_operation* op = g_pa_context_set_sink_input_volume(context, index, &cvolume, NULL, NULL);
-    if (op != NULL)
+    if (op)
     {
         g_pa_operation_unref(op);
     }
@@ -219,13 +219,13 @@ void output_pulse::force_play()
         return;
     }
 
-    if (stream != NULL)
+    if (stream)
     {
         g_pa_threaded_mainloop_lock(mainloop);
         draining = true;
         drained = false;
         pa_operation* op = g_pa_stream_drain(stream, stream_drained_cb, this);
-        if (op != NULL)
+        if (op)
         {
             g_pa_operation_unref(op);
         }
@@ -236,7 +236,7 @@ void output_pulse::force_play()
             drained = true;
         }
         op = g_pa_stream_trigger(stream, NULL, NULL);
-        if (op != NULL)
+        if (op)
         {
             g_pa_operation_unref(op);
         }
@@ -258,7 +258,7 @@ double output_pulse::get_latency()
     }
     if (m_active_spec.is_valid() && !drained)
     {
-        if (stream != NULL)
+        if (stream)
         {
             pa_usec_t latency;
             const pa_timing_info* timing_info = g_pa_stream_get_timing_info(stream);
@@ -331,10 +331,13 @@ pfc::eventHandle_t output_pulse::get_trigger_event()
 
 void output_pulse::g_enum_devices(output_device_enum_callback& p_callback)
 {
+    pfc::string8 pulseaudio_server_string;
+
     // run the callback if the pulseaudio libraries are or have been loaded successfully
     if (load_pulse_dll())
     {
-        p_callback.on_device(guid_cfg_pulseaudio_device, "localhost", 9);
+        cfg_pulseaudio_server.get(pulseaudio_server_string);
+        p_callback.on_device(guid_cfg_pulseaudio_device, pulseaudio_server_string, 9);
     }
 }
 
@@ -385,9 +388,7 @@ const char* output_pulse::g_get_name()
 
 GUID output_pulse::g_get_guid()
 {
-    // yo whaaaat
-    static const GUID guid = {0xfe94df9, 0xc8e2, 0x40a1, {0x40, 0xa1, 0xb1, 0x2a, 0x4a, 0x6c, 0xe4, 0x9e}};
-    return guid;
+    return guid_cfg_pulseaudio_output;
 }
 
 bool output_pulse::context_wait(pa_context* ctx, pa_threaded_mainloop* ml)
@@ -488,8 +489,6 @@ void output_pulse::stream_state_cb(pa_stream* s, void* userdata)
     case PA_STREAM_FAILED:
     case PA_STREAM_TERMINATED:
         g_pa_threaded_mainloop_signal(ml, 0);
-    //default:
-    //    break;
     }
 }
 
@@ -515,7 +514,7 @@ void output_pulse::stream_write_cb(pa_stream* s, size_t nbytes, void* userdata)
 
 size_t output_pulse::write()
 {
-    if (stream == NULL || m_incoming_spec != m_active_spec) {
+    if (!stream || m_incoming_spec != m_active_spec) {
       return 0;
     }
 
@@ -824,7 +823,8 @@ void output_pulse::console_error(const char* prefix, int error_code)
     if (error_code != 0)
     {
         const char* error = g_pa_strerror(error_code);
-        if (error != NULL) {
+        if (error)
+        {
             s << ": " << error;
         }
     }
@@ -858,7 +858,7 @@ bool output_pulse::load_pulse_dll()
     wpath_libpulse << path << "pulse\\libpulse-0.dll";
     libpulse = LoadLibraryExW(wpath_libpulse.str().c_str(), NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
 
-    if (libpulse == NULL) {
+    if (!libpulse) {
         // we don't really do much with the error code at this point
         console::error("Could not load libpulse-0.dll");
         return false;
