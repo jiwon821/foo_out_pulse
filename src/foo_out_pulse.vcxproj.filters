@@ -32,5 +32,8 @@
     <ClInclude Include="pulse.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="output_pulseaudio.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

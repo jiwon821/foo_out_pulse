@@ -238,6 +238,7 @@ copy "$(TargetPath)" "%TARGET_DIR%"</Command>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="output_pulseaudio.h" />
     <ClInclude Include="pulse.h" />
     <ClInclude Include="stdafx.h" />
   </ItemGroup>
