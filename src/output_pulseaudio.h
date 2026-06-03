@@ -104,54 +104,48 @@ public:
         size_t total_samples;
         size_t progress;
     } fade;
-    output_pulse(const GUID& p_device, double p_buffer_length, bool p_dither,
-        t_uint32 p_bitdepth);
+
+    output_pulse(const GUID&, double, bool, t_uint32);
     ~output_pulse();
 
     void pause(bool);
     void volume_set(double);
     void flush();
     void flush_changing_track();
-
-    void update(bool& p_ready);
+    void update(bool&);
     size_t update_v2();
     void force_play();
     double get_latency();
 
-    void process_samples(const audio_chunk& p_chunk);
+    void process_samples(const audio_chunk&);
     bool is_progressing();
     pfc::eventHandle_t get_trigger_event();
     static void g_enum_devices(output_device_enum_callback&);
 
-    static bool g_advanced_settings_query() { return false; }
-    static bool g_needs_bitdepth_config() { return false; }
-    static bool g_needs_dither_config() { return false; }
-    static bool g_needs_device_list_prefixes() { return true; }
-    static bool g_supports_multiple_streams() { return false; }
-    static bool g_is_high_latency() { return true; }
-    static uint32_t g_extra_flags() { return 0; }
-    static void g_advanced_settings_popup(HWND p_parent, POINT p_menupoint) {}
-    static const char* g_get_name() { return "Pulseaudio"; }
+    static bool g_advanced_settings_query();
+    static bool g_needs_bitdepth_config();
+    static bool g_needs_dither_config();
+    static bool g_needs_device_list_prefixes();
+    static bool g_supports_multiple_streams();
+    static bool g_is_high_latency();
+    static uint32_t g_extra_flags();
+    static void g_advanced_settings_popup(HWND, POINT);
+    static const char* g_get_name();
     static GUID g_get_guid();
+
 private:
     const double offset = 0.05;
-
     pa_context* context = NULL;
     pa_threaded_mainloop* mainloop = NULL;
     pa_stream* stream = NULL;
-
     pfc::array_t<audio_sample, pfc::alloc_fast_aggressive> m_incoming;
     size_t m_incoming_ptr;
     t_samplespec m_incoming_spec, m_active_spec;
-
     double buffer_length;
-
     pa_volume_t volume;
-
     bool progressing;
     bool draining;
     bool drained;
-
     bool rewind_active;
     lookback_buffer rewind_buffer;
     const size_t cfg_seek_fade_in;
@@ -161,144 +155,44 @@ private:
     size_t fade_in_next_ms;
     fade active_fade_in;
     bool next_write_relative;
-
     pfc::event trigger_update;
-
     service_ptr_t<playback_control> playback_control;
 
-    static bool context_wait(pa_context* ctx, pa_threaded_mainloop* ml) {
-        pa_context_state_t state;
-        while ((state = g_pa_context_get_state(ctx)) != PA_CONTEXT_READY) {
-            if (state == PA_CONTEXT_FAILED || state == PA_CONTEXT_TERMINATED)
-                return false;
-            g_pa_threaded_mainloop_wait(ml);
-        }
-        return 0;
-    }
-
-    static void context_subscribe_cb(pa_context* c,
-        pa_subscription_event_type_t t, uint32_t idx,
-        void* userdata) {
-        if ((pa_subscription_event_type)(t & PA_SUBSCRIPTION_EVENT_SINK_INPUT) ==
-            PA_SUBSCRIPTION_EVENT_SINK_INPUT) {
-            output_pulse* output = (output_pulse*)userdata;
-            if (output->stream == NULL) return;
-
-            if (g_pa_stream_get_index(output->stream) == idx) {
-                g_pa_context_get_sink_input_info(output->context, idx,
-                    sink_input_info_cb, output);
-            }
-        }
-    }
-
-    static void sink_input_info_cb(pa_context* c, const pa_sink_input_info* i,
-        int eol, void* userdata) {
-        output_pulse* output = (output_pulse*)userdata;
-        if (i == NULL || output == NULL) return;
-
-        if (g_pa_cvolume_valid(&i->volume) &&
-            output->volume != i->volume.values[0]) {
-            float volume_db = (float)g_pa_sw_volume_to_dB(i->volume.values[0]);
-            fb2k::inMainThread(
-                [volume_db]() { playback_control::get()->set_volume(volume_db); });
-        }
-    }
-
-    static void stop() {
-        fb2k::inMainThread([]() { playback_control::get()->stop(); });
-    }
-
-    static void context_state_cb(pa_context* ctx, void* userdata) {
-        output_pulse* output = (output_pulse*)userdata;
-        std::stringstream s;
-        switch (g_pa_context_get_state(ctx)) {
-        case PA_CONTEXT_FAILED:
-            console_error("connection failed", g_pa_context_errno(ctx));
-            stop();
-        case PA_CONTEXT_READY:
-        case PA_CONTEXT_TERMINATED:
-            g_pa_threaded_mainloop_signal(output->mainloop, 0);
-        default:
-            break;
-        }
-    }
-
-    static int stream_wait(pa_stream* s, pa_threaded_mainloop* ml) {
-        pa_stream_state_t state;
-
-        while ((state = g_pa_stream_get_state(s)) != PA_STREAM_READY) {
-            if (state == PA_STREAM_FAILED || state == PA_STREAM_TERMINATED) return -1;
-            g_pa_threaded_mainloop_wait(ml);
-        }
-        return 0;
-    }
-
-    static void stream_state_cb(pa_stream* s, void* userdata) {
-        pa_threaded_mainloop* ml = (pa_threaded_mainloop*)userdata;
-
-        switch (g_pa_stream_get_state(s)) {
-        case PA_STREAM_READY:
-        case PA_STREAM_FAILED:
-        case PA_STREAM_TERMINATED:
-            g_pa_threaded_mainloop_signal(ml, 0);
-        default:
-            break;
-        }
-    }
-
-    static void stream_started_cb(pa_stream* s, void* userdata) {
-        output_pulse* output = (output_pulse*)userdata;
-        output->progressing = true;
-    }
-
-    static void stream_underflow_cb(pa_stream* s, void* userdata) {
-        output_pulse* output = (output_pulse*)userdata;
-        output->progressing = false;
-        output->trigger_update.set_state(true);
-    }
-
-    static void stream_write_cb(pa_stream* s, size_t nbytes, void* userdata) {
-        output_pulse* output = (output_pulse*)userdata;
-        output->trigger_update.set_state(true);
-    }
-
+    // no idea
+    static bool context_wait(pa_context*, pa_threaded_mainloop*);
+    static void context_subscribe_cb(pa_context*, pa_subscription_event_type_t, uint32_t, void*);
+    static void sink_input_info_cb(pa_context*, const pa_sink_input_info*, int, void*);
+    // stops playback
+    static void stop();
+    // no idea what
+    static void context_state_cb(pa_context*, void*);
+    // stream methods and callbacks
+    static int stream_wait(pa_stream*, pa_threaded_mainloop*);
+    static void stream_state_cb(pa_stream*, void*);
+    static void stream_started_cb(pa_stream*, void*);
+    static void stream_underflow_cb(pa_stream*, void*);
+    static void stream_write_cb(pa_stream*, size_t, void*);
+    // writes stuff to pulseaudio stream
     size_t write();
-    void fade_section(audio_sample* data, size_t num_samples_to_write,
-        size_t total_fade_samples, size_t start_at_sample,
-        size_t num_channels, bool fade_in);
-
+    // total mystery method
+    void fade_section(audio_sample*, size_t, size_t, size_t, size_t, bool);
+    // writes fadeout to the stream
     void write_fade_out(size_t);
-
-    static void stream_success_cb(pa_stream* s, int success, void* userdata) {
-        g_pa_threaded_mainloop_signal((pa_threaded_mainloop*)userdata, 0);
-    }
-
-    void wait_for_op(pa_operation* op);
-
+    // signals something to the pulseaudio mainloop
+    static void stream_success_cb(pa_stream*, int, void*);
+    // waits until the pulseaudio operation has been completed
+    void wait_for_op(pa_operation*);
+    // closes the pulseaudio stream
     void close_stream();
+    // opens a pulseaudio stream for the incoming spec
     void open_incoming_spec();
-
-    static void console_error(const char* prefix, int error_code) {
-        std::stringstream s;
-        s << "Pulseaudio: ";
-        s << prefix;
-
-        if (error_code != 0) {
-            const char* error = g_pa_strerror(error_code);
-            if (error != NULL) {
-                s << ": " << error;
-            }
-        }
-
-        console::error(s.str().c_str());
-    }
-
-    static void stream_drained_cb(pa_stream* s, int success, void* userdata) {
-        output_pulse* output = (output_pulse*)userdata;
-        output->draining = false;
-        output->drained = true;
-        output->trigger_update.set_state(true);
-    }
-
+    // wrapper for logging errors into the console
+    static void console_error(const char*, int) {
+    // callback for something
+    static void stream_drained_cb(pa_stream*, int, void*);
+    // loads external functions from libpulse-0.dll
     static bool load_pulse_dll();
 };
+
+// needs to reside where the class definition is
+static output_factory_t<output_pulse> g_output_pulse_factory;
