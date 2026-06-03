@@ -43,7 +43,7 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
     {
         g_pa_threaded_mainloop_free(mainloop);
         mainloop = NULL;
-        console_error("failed to start playback thread", 0);
+        console::error("Error starting playback thread");
         stop();
         return;
     }
@@ -243,28 +243,32 @@ void output_pulse::force_play()
 double output_pulse::get_latency()
 {
     double ret = 0;
-    if (m_incoming_spec.is_valid()) {
-      ret += audio_math::samples_to_time(
-          (m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.m_channels,
-          m_incoming_spec.m_sample_rate);
+    if (m_incoming_spec.is_valid())
+    {
+        ret += audio_math::samples_to_time((m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.m_channels, m_incoming_spec.m_sample_rate);
     }
-    if (m_active_spec.is_valid() && !drained) {
-      if (stream != NULL) {
-        pa_usec_t latency;
-        const pa_timing_info* timing_info = g_pa_stream_get_timing_info(stream);
-        if (g_pa_stream_get_latency(stream, &latency, NULL) > -1) {
-          ret += (latency * 0.000001);
-        } else {
-          g_pa_threaded_mainloop_lock(mainloop);
-          pa_operation* op = g_pa_stream_update_timing_info(
-              stream, stream_success_cb, mainloop);
-          wait_for_op(op);
-          g_pa_threaded_mainloop_unlock(mainloop);
-          if (g_pa_stream_get_latency(stream, &latency, NULL) > -1) {
-            ret += (latency * 0.000001);
-          }
+    if (m_active_spec.is_valid() && !drained)
+    {
+        if (stream != NULL)
+        {
+            pa_usec_t latency;
+            const pa_timing_info* timing_info = g_pa_stream_get_timing_info(stream);
+            if (g_pa_stream_get_latency(stream, &latency, NULL) > -1)
+            {
+                ret += (latency * 0.000001);
+            }
+            else
+            {
+                g_pa_threaded_mainloop_lock(mainloop);
+                pa_operation* op = g_pa_stream_update_timing_info(stream, stream_success_cb, mainloop);
+                wait_for_op(op);
+                g_pa_threaded_mainloop_unlock(mainloop);
+                if (g_pa_stream_get_latency(stream, &latency, NULL) > -1)
+                {
+                    ret += (latency * 0.000001);
+                }
+            }
         }
-      }
     }
     return ret;
 }
@@ -275,32 +279,34 @@ void output_pulse::process_samples(const audio_chunk& p_chunk)
     t_samplespec spec;
     spec.fromchunk(p_chunk);
     if (!spec.is_valid())
-      pfc::throw_exception_with_message<exception_io_data>(
-          "Invalid audio stream specifications");
+    {
+        // TODO: I wonder if a console::error would suffice
+        pfc::throw_exception_with_message<exception_io_data>("Invalid audio stream specifications");
+    }
+
     m_incoming_spec = spec;
     size_t length = p_chunk.get_used_size();
     m_incoming.set_data_fromptr(p_chunk.get_data(), length);
     m_incoming_ptr = 0;
 
-    if (fade_in_next_ms > 0) {
-      active_fade_in = fade();
-      active_fade_in.active = true;
-      active_fade_in.total_samples =
-          m_incoming_spec.time_to_samples(0.001 * fade_in_next_ms);
-      active_fade_in.progress = 0;
-      fade_in_next_ms = 0;
+    if (fade_in_next_ms > 0)
+    {
+        active_fade_in = fade();
+        active_fade_in.active = true;
+        active_fade_in.total_samples = m_incoming_spec.time_to_samples(0.001 * fade_in_next_ms);
+        active_fade_in.progress = 0;
+        fade_in_next_ms = 0;
     }
 
-    if (active_fade_in.active) {
-      size_t fade_samples =
-          pfc::min_t(m_incoming.get_size() / m_incoming_spec.m_channels,
-                     (active_fade_in.total_samples - active_fade_in.progress));
-      fade_section(m_incoming.get_ptr(), fade_samples,
-                   active_fade_in.total_samples, active_fade_in.progress,
-                   m_incoming_spec.m_channels, true);
-      active_fade_in.progress += fade_samples;
-      if (active_fade_in.progress == active_fade_in.total_samples)
-        active_fade_in.active = false;
+    if (active_fade_in.active)
+    {
+        size_t fade_samples = pfc::min_t(m_incoming.get_size() / m_incoming_spec.m_channels, (active_fade_in.total_samples - active_fade_in.progress));
+        fade_section(m_incoming.get_ptr(), fade_samples, active_fade_in.total_samples, active_fade_in.progress, m_incoming_spec.m_channels, true);
+        active_fade_in.progress += fade_samples;
+        if (active_fade_in.progress == active_fade_in.total_samples)
+        {
+            active_fade_in.active = false;
+        }
     }
 }
 
@@ -379,9 +385,12 @@ GUID output_pulse::g_get_guid()
 bool output_pulse::context_wait(pa_context* ctx, pa_threaded_mainloop* ml)
 {
     pa_context_state_t state;
-    while ((state = g_pa_context_get_state(ctx)) != PA_CONTEXT_READY) {
+    while ((state = g_pa_context_get_state(ctx)) != PA_CONTEXT_READY)
+    {
         if (state == PA_CONTEXT_FAILED || state == PA_CONTEXT_TERMINATED)
+        {
             return false;
+        }
         g_pa_threaded_mainloop_wait(ml);
     }
     return 0;
@@ -389,14 +398,16 @@ bool output_pulse::context_wait(pa_context* ctx, pa_threaded_mainloop* ml)
 
 void output_pulse::context_subscribe_cb(pa_context* c, pa_subscription_event_type_t t, uint32_t idx, void* userdata)
 {
-    if ((pa_subscription_event_type)(t & PA_SUBSCRIPTION_EVENT_SINK_INPUT) ==
-        PA_SUBSCRIPTION_EVENT_SINK_INPUT) {
+    if ((pa_subscription_event_type)(t & PA_SUBSCRIPTION_EVENT_SINK_INPUT) == PA_SUBSCRIPTION_EVENT_SINK_INPUT)
+    {
         output_pulse* output = (output_pulse*)userdata;
-        if (output->stream == NULL) return;
+        if (!(output->stream)) {
+            return;
+        }
 
-        if (g_pa_stream_get_index(output->stream) == idx) {
-            g_pa_context_get_sink_input_info(output->context, idx,
-                sink_input_info_cb, output);
+        if (g_pa_stream_get_index(output->stream) == idx)
+        {
+            g_pa_context_get_sink_input_info(output->context, idx, sink_input_info_cb, output);
         }
     }
 }
@@ -404,26 +415,35 @@ void output_pulse::context_subscribe_cb(pa_context* c, pa_subscription_event_typ
 void output_pulse::sink_input_info_cb(pa_context* c, const pa_sink_input_info* i, int eol, void* userdata)
 {
     output_pulse* output = (output_pulse*)userdata;
-    if (i == NULL || output == NULL) return;
+    if (!i || !output)
+    {
+        return;
+    }
 
-    if (g_pa_cvolume_valid(&i->volume) &&
-        output->volume != i->volume.values[0]) {
+    if (g_pa_cvolume_valid(&i->volume) && output->volume != i->volume.values[0])
+    {
         float volume_db = (float)g_pa_sw_volume_to_dB(i->volume.values[0]);
-        fb2k::inMainThread(
-            [volume_db]() { playback_control::get()->set_volume(volume_db); });
+        fb2k::inMainThread([volume_db]()
+        {
+            playback_control::get()->set_volume(volume_db);
+        });
     }
 }
 
 void output_pulse::stop()
 {
-    fb2k::inMainThread([]() { playback_control::get()->stop(); });
+    fb2k::inMainThread([]()
+    {
+        playback_control::get()->stop();
+    });
 }
 
 void output_pulse::context_state_cb(pa_context* ctx, void* userdata)
 {
     output_pulse* output = (output_pulse*)userdata;
     std::stringstream s;
-    switch (g_pa_context_get_state(ctx)) {
+    switch (g_pa_context_get_state(ctx))
+    {
     case PA_CONTEXT_FAILED:
         console_error("connection failed", g_pa_context_errno(ctx));
         stop();
@@ -439,8 +459,12 @@ int output_pulse::stream_wait(pa_stream* s, pa_threaded_mainloop* ml)
 {
     pa_stream_state_t state;
 
-    while ((state = g_pa_stream_get_state(s)) != PA_STREAM_READY) {
-        if (state == PA_STREAM_FAILED || state == PA_STREAM_TERMINATED) return -1;
+    while ((state = g_pa_stream_get_state(s)) != PA_STREAM_READY)
+    {
+        if (state == PA_STREAM_FAILED || state == PA_STREAM_TERMINATED)
+        {
+            return -1;
+        }
         g_pa_threaded_mainloop_wait(ml);
     }
     return 0;
@@ -450,13 +474,14 @@ void output_pulse::stream_state_cb(pa_stream* s, void* userdata)
 {
     pa_threaded_mainloop* ml = (pa_threaded_mainloop*)userdata;
 
-    switch (g_pa_stream_get_state(s)) {
+    switch (g_pa_stream_get_state(s))
+    {
     case PA_STREAM_READY:
     case PA_STREAM_FAILED:
     case PA_STREAM_TERMINATED:
         g_pa_threaded_mainloop_signal(ml, 0);
-    default:
-        break;
+    //default:
+    //    break;
     }
 }
 
@@ -489,176 +514,176 @@ size_t output_pulse::write()
     g_pa_threaded_mainloop_lock(mainloop);
 
     if (next_write_relative) {
-      const pa_timing_info* info = g_pa_stream_get_timing_info(stream);
-      if (info == NULL) {
-        console_error("error writing to stream - no timing info", 0);
-        g_pa_threaded_mainloop_unlock(mainloop);
-        return 0;
-      }
+        const pa_timing_info* info = g_pa_stream_get_timing_info(stream);
+        if (!info)
+        {
+            console::error("Error getting stream timing info");
+            g_pa_threaded_mainloop_unlock(mainloop);
+            return 0;
+        }
 
-      int64_t write_index = info->read_index -
-                            (info->read_index % (4 * m_active_spec.m_channels));
+        int64_t write_index = info->read_index - (info->read_index % (4 * m_active_spec.m_channels));
 
-      const pa_buffer_attr* buffer_attr = g_pa_stream_get_buffer_attr(stream);
-      if (buffer_attr == NULL) {
-        console_error("error writing to stream - no buffer attributes", 0);
-        g_pa_threaded_mainloop_unlock(mainloop);
-        return 0;
-      }
+        const pa_buffer_attr* buffer_attr = g_pa_stream_get_buffer_attr(stream);
+        if (!buffer_attr)
+        {
+            console::error("Error getting stream buffer attributes");
+            g_pa_threaded_mainloop_unlock(mainloop);
+            return 0;
+        }
 
-      size_t cw_samples = buffer_attr->tlength / sizeof(audio_sample);
-      size_t delta =
-          pfc::min_t(m_incoming.get_size() - m_incoming_ptr, cw_samples);
-      if (delta > 0) {
-        int error = g_pa_stream_write(
-            stream, m_incoming.get_ptr() + m_incoming_ptr,
+        size_t cw_samples = buffer_attr->tlength / sizeof(audio_sample);
+        size_t delta = pfc::min_t(m_incoming.get_size() - m_incoming_ptr, cw_samples);
+        if (delta > 0)
+        {
+            int error = g_pa_stream_write(stream, m_incoming.get_ptr() + m_incoming_ptr,
             delta * sizeof(audio_sample), NULL, write_index, PA_SEEK_ABSOLUTE);
-        if (error < 0) {
-          console_error("error writing to stream", error);
-          g_pa_threaded_mainloop_unlock(mainloop);
-          return (cw_samples - delta) / m_incoming_spec.m_channels;
-        } else {
-          next_write_relative = false;
+            if (error < 0)
+            {
+                console_error("error writing to stream", error);
+                g_pa_threaded_mainloop_unlock(mainloop);
+                return (cw_samples - delta) / m_incoming_spec.m_channels;
+            }
+            else
+            {
+                next_write_relative = false;
 
-          if (rewind_active)
-            rewind_buffer.queue(m_incoming.get_ptr() + m_incoming_ptr,
-                                delta * sizeof(audio_sample));
-
-          m_incoming_ptr += delta;
+                if (rewind_active)
+                {
+                    rewind_buffer.queue(m_incoming.get_ptr() + m_incoming_ptr, delta * sizeof(audio_sample));
+                }
+                m_incoming_ptr += delta;
+            }
         }
-      }
 
-      g_pa_threaded_mainloop_unlock(mainloop);
-      return (cw_samples - delta) / m_incoming_spec.m_channels;
-    } else {
-      size_t cw_samples =
-          g_pa_stream_writable_size(stream) / sizeof(audio_sample);
-      if (cw_samples == (size_t)-1) {
-        console_error("g_pa_stream_writable_size error",
-                      g_pa_context_errno(context));
-        return 0;
-      }
-
-      size_t delta =
-          pfc::min_t(m_incoming.get_size() - m_incoming_ptr, cw_samples);
-
-      if (delta > 0) {
-        int error = g_pa_stream_write(
-            stream, m_incoming.get_ptr() + m_incoming_ptr,
-            delta * sizeof(audio_sample), NULL, 0, PA_SEEK_RELATIVE);
-        if (error < 0) {
-          console_error("error writing to stream", error);
-          g_pa_threaded_mainloop_unlock(mainloop);
-          return 0;
-        } else {
-          if (rewind_active)
-            rewind_buffer.queue(m_incoming.get_ptr() + m_incoming_ptr,
-                                delta * sizeof(audio_sample));
-
-          m_incoming_ptr += delta;
+        g_pa_threaded_mainloop_unlock(mainloop);
+        return (cw_samples - delta) / m_incoming_spec.m_channels;
+    }
+    else
+    {
+        size_t cw_samples = g_pa_stream_writable_size(stream) / sizeof(audio_sample);
+        if (cw_samples == (size_t)-1)
+        {
+            console_error("g_pa_stream_writable_size error", g_pa_context_errno(context));
+            return 0;
         }
-      }
 
-      g_pa_threaded_mainloop_unlock(mainloop);
-      return (cw_samples - delta) / m_incoming_spec.m_channels;
+        size_t delta = pfc::min_t(m_incoming.get_size() - m_incoming_ptr, cw_samples);
+
+        if (delta > 0)
+        {
+            int error = g_pa_stream_write(stream, m_incoming.get_ptr() + m_incoming_ptr, delta * sizeof(audio_sample), NULL, 0, PA_SEEK_RELATIVE);
+            if (error < 0)
+            {
+                console_error("error writing to stream", error);
+                g_pa_threaded_mainloop_unlock(mainloop);
+                return 0;
+            }
+            else
+            {
+                if (rewind_active)
+                {
+                    rewind_buffer.queue(m_incoming.get_ptr() + m_incoming_ptr, delta * sizeof(audio_sample));
+                }
+
+                m_incoming_ptr += delta;
+            }
+        }
+
+        g_pa_threaded_mainloop_unlock(mainloop);
+        return (cw_samples - delta) / m_incoming_spec.m_channels;
     }
 }
 
-void output_pulse::fade_section(audio_sample* data, size_t num_samples_to_write,
-                size_t total_fade_samples, size_t start_at_sample,
-                size_t num_channels, bool fade_in)
+void output_pulse::fade_section(audio_sample* data, size_t num_samples_to_write, size_t total_fade_samples, size_t start_at_sample, size_t num_channels, bool fade_in)
 {
-    if (fade_in) {
-      for (size_t s = 0; s < num_samples_to_write; s++) {
-        audio_math::scale(
-            data + (s * num_channels), num_channels, data + (s * num_channels),
-            (1.0f * (s + start_at_sample)) / (1.0f * total_fade_samples));
-      }
-    } else {
-      for (size_t s = 0; s < num_samples_to_write; s++) {
-        audio_math::scale(
-            data + (s * num_channels), num_channels, data + (s * num_channels),
-            (1.0f * (total_fade_samples - (start_at_sample + s))) /
-                (1.0f * total_fade_samples));
-      }
+    if (fade_in)
+    {
+        for (size_t s = 0; s < num_samples_to_write; s++)
+        {
+            audio_math::scale(data + (s * num_channels), num_channels, data + (s * num_channels), (1.0f * (s + start_at_sample)) / (1.0f * total_fade_samples));
+        }
+    }
+    else
+    {
+        for (size_t s = 0; s < num_samples_to_write; s++)
+        {
+            audio_math::scale(data + (s * num_channels), num_channels, data + (s * num_channels), (1.0f * (total_fade_samples - (start_at_sample + s))) / (1.0f * total_fade_samples));
+        }
     }
 }
 
 void output_pulse::write_fade_out(size_t fade_ms)
 {
-    if (stream == NULL || fade_ms == 0 || !rewind_active) {
-      next_write_relative = true;
-      trigger_update.set_state(true);
-      return;
+    if (stream == NULL || fade_ms == 0 || !rewind_active)
+    {
+        next_write_relative = true;
+        trigger_update.set_state(true);
+        return;
     }
 
     g_pa_threaded_mainloop_lock(mainloop);
 
-    if (g_pa_stream_is_corked(stream)) {
-      pa_operation* op = g_pa_stream_flush(stream, NULL, NULL);
-      if (op != NULL) {
-        g_pa_operation_unref(op);
-      }
+    if (g_pa_stream_is_corked(stream))
+    {
+        pa_operation* op = g_pa_stream_flush(stream, NULL, NULL);
+        if (op != NULL)
+        {
+            g_pa_operation_unref(op);
+        }
 
-      g_pa_threaded_mainloop_unlock(mainloop);
-      return;
+        g_pa_threaded_mainloop_unlock(mainloop);
+        return;
     }
 
-    pa_operation* op =
-        g_pa_stream_update_timing_info(stream, stream_success_cb, mainloop);
+    pa_operation* op = g_pa_stream_update_timing_info(stream, stream_success_cb, mainloop);
     wait_for_op(op);
 
     const pa_timing_info* timing_info = g_pa_stream_get_timing_info(stream);
-    if (timing_info == NULL) {
-      console_error("error writing to stream - no timing info", 0);
-      g_pa_threaded_mainloop_unlock(mainloop);
-      return;
+    if (!timing_info)
+    {
+        console::error("Error getting stream timing info");
+        g_pa_threaded_mainloop_unlock(mainloop);
+        return;
     }
 
     const pa_buffer_attr* buffer_attr = g_pa_stream_get_buffer_attr(stream);
-    if (buffer_attr == NULL) {
-      console_error("error writing to stream - no buffer attributes", 0);
-      g_pa_threaded_mainloop_unlock(mainloop);
-      return;
+    if (!buffer_attr) {
+        console::error("Error getting stream buffer attributes");
+        g_pa_threaded_mainloop_unlock(mainloop);
+        return;
     }
 
     int64_t read_index = timing_info->read_index;
     int64_t write_index = timing_info->write_index;
 
-    int64_t offset_bytes = (int64_t)m_active_spec.time_to_samples(offset) *
-                           m_active_spec.m_channels * 4;
-    int64_t buffered_bytes =
-        (buffer_attr->maxlength + write_index - read_index) %
-        buffer_attr->maxlength;
+    int64_t offset_bytes = (int64_t)m_active_spec.time_to_samples(offset) * m_active_spec.m_channels * 4;
+    int64_t buffered_bytes = (buffer_attr->maxlength + write_index - read_index) % buffer_attr->maxlength;
 
-    int64_t rewind_bytes =
-        pfc::max_t(buffered_bytes - offset_bytes, (int64_t)0);
+    int64_t rewind_bytes = pfc::max_t(buffered_bytes - offset_bytes, (int64_t)0);
     rewind_bytes = rewind_buffer.read_back((size_t)rewind_bytes);
 
-    if (rewind_bytes > 0) {
-      std::shared_ptr<BYTE> rewind_data = rewind_buffer.out_buf_;
-      int64_t fade_samples =
-          pfc::min_t(rewind_bytes / 4 / m_active_spec.m_channels,
-                     (int64_t)m_active_spec.time_to_samples(0.001 * fade_ms) *
-                         m_active_spec.m_channels);
-      fade_section((audio_sample*)rewind_data.get(), (size_t)fade_samples,
-                   (size_t)fade_samples, 0, m_active_spec.m_channels, false);
+    if (rewind_bytes > 0)
+    {
+        std::shared_ptr<BYTE> rewind_data = rewind_buffer.out_buf_;
+        int64_t fade_samples = pfc::min_t(rewind_bytes / 4 / m_active_spec.m_channels, (int64_t)m_active_spec.time_to_samples(0.001 * fade_ms) * m_active_spec.m_channels);
+        fade_section((audio_sample*)rewind_data.get(), (size_t)fade_samples, (size_t)fade_samples, 0, m_active_spec.m_channels, false);
 
-      int64_t write_bytes =
-          fade_samples * m_active_spec.m_channels * sizeof(audio_sample);
-      int error = g_pa_stream_write(
-          stream, (audio_sample*)rewind_data.get(), (size_t)write_bytes, NULL,
-          read_index + offset_bytes, PA_SEEK_ABSOLUTE);
-      if (error < 0) {
-        console_error("error writing fade to stream", error);
-      } else {
-        rewind_buffer.queue((audio_sample*)rewind_data.get(),
-                            (size_t)write_bytes);
-        pa_operation* op =
-            g_pa_stream_drain(stream, stream_success_cb, mainloop);
-        wait_for_op(op);
-      }
-    } else {
+        int64_t write_bytes = fade_samples * m_active_spec.m_channels * sizeof(audio_sample);
+        int error = g_pa_stream_write(stream, (audio_sample*)rewind_data.get(), (size_t)write_bytes, NULL, read_index + offset_bytes, PA_SEEK_ABSOLUTE);
+        if (error < 0)
+        {
+            console_error("error writing fade to stream", error);
+        }
+        else
+        {
+            rewind_buffer.queue((audio_sample*)rewind_data.get(), (size_t)write_bytes);
+            pa_operation* op = g_pa_stream_drain(stream, stream_success_cb, mainloop);
+            wait_for_op(op);
+        }
+    }
+    else
+    {
       next_write_relative = true;
     }
 
@@ -672,7 +697,7 @@ void output_pulse::stream_success_cb(pa_stream* s, int success, void* userdata)
 
 void output_pulse::wait_for_op(pa_operation* op)
 {
-    if (op != NULL) {
+    if (op) {
         while (g_pa_operation_get_state(op) == PA_OPERATION_RUNNING)
         {
             g_pa_threaded_mainloop_wait(mainloop);
@@ -683,7 +708,8 @@ void output_pulse::wait_for_op(pa_operation* op)
 
 void output_pulse::close_stream()
 {
-    if (stream != NULL) {
+    if (stream)
+    {
         g_pa_stream_set_state_callback(stream, NULL, NULL);
         g_pa_stream_set_started_callback(stream, NULL, NULL);
         g_pa_stream_set_underflow_callback(stream, NULL, NULL);
@@ -697,7 +723,11 @@ void output_pulse::close_stream()
 
 void output_pulse::open_incoming_spec()
 {
-    if (!m_incoming_spec.is_valid()) return;
+    if (!m_incoming_spec.is_valid())
+    {
+        console::info("Invalid incoming_spec");
+        return;
+    }
 
     pa_sample_spec ss;
     ss.channels = m_incoming_spec.m_channels;
@@ -705,23 +735,16 @@ void output_pulse::open_incoming_spec()
     ss.format = PA_SAMPLE_FLOAT32LE;
 
     struct pa_channel_map map;
-    const pa_channel_map* map_ptr =
-        g_pa_channel_map_init_auto(&map, ss.channels, PA_CHANNEL_MAP_WAVEEX);
+    const pa_channel_map* map_ptr = g_pa_channel_map_init_auto(&map, ss.channels, PA_CHANNEL_MAP_WAVEEX);
 
-    pa_stream_flags_t flags = (pa_stream_flags_t)(PA_STREAM_INTERPOLATE_TIMING |
-                                                PA_STREAM_AUTO_TIMING_UPDATE);
+    pa_stream_flags_t flags = (pa_stream_flags_t)(PA_STREAM_INTERPOLATE_TIMING | PA_STREAM_AUTO_TIMING_UPDATE);
 
     struct pa_buffer_attr attr;
-    attr.maxlength =
-        (uint32_t)ceil(m_incoming_spec.time_to_samples(buffer_length + offset) *
-                    m_incoming_spec.m_channels * 4);
+    attr.maxlength = (uint32_t)ceil(m_incoming_spec.time_to_samples(buffer_length + offset) * m_incoming_spec.m_channels * 4);
     attr.fragsize = 0;
-    attr.minreq = cfg_pulseaudio_minreq_workaround.get() ? attr.maxlength / 2
-                                                        : (uint32_t)-1;
+    attr.minreq = cfg_pulseaudio_minreq_workaround.get() ? attr.maxlength / 2 : (uint32_t)-1;
     attr.tlength = attr.maxlength;
-    attr.prebuf = (uint32_t)ceil(
-        m_incoming_spec.time_to_samples(0.001 * cfg_pulseaudio_prebuf) *
-        m_incoming_spec.m_channels * 4);
+    attr.prebuf = (uint32_t)ceil(m_incoming_spec.time_to_samples(0.001 * cfg_pulseaudio_prebuf) * m_incoming_spec.m_channels * 4);
 
     std::stringstream s;
     s << "Pulseaudio: requesting buffer attributes: maxlength "
@@ -735,11 +758,12 @@ void output_pulse::open_incoming_spec()
 
     stream = g_pa_stream_new(context, "Audio", &ss, map_ptr);
     progressing = false;
-    if (stream == NULL) {
-    g_pa_threaded_mainloop_unlock(mainloop);
-    console_error("failed to create stream", 0);
-    stop();
-    return;
+    if (!stream)
+    {
+        g_pa_threaded_mainloop_unlock(mainloop);
+        console::error("Error creating stream");
+        stop();
+        return;
     }
 
     g_pa_stream_set_state_callback(stream, stream_state_cb, mainloop);
@@ -747,31 +771,35 @@ void output_pulse::open_incoming_spec()
     g_pa_stream_set_underflow_callback(stream, stream_underflow_cb, this);
     g_pa_stream_set_write_callback(stream, stream_write_cb, this);
 
-    int err =
-        g_pa_stream_connect_playback(stream, NULL, &attr, flags, NULL, NULL);
-    if (err < 0 || stream_wait(stream, mainloop)) {
-    g_pa_threaded_mainloop_unlock(mainloop);
-    console_error("failed to connect stream", err);
-    stop();
-    return;
+    int err = g_pa_stream_connect_playback(stream, NULL, &attr, flags, NULL, NULL);
+    if (err < 0 || stream_wait(stream, mainloop))
+    {
+        g_pa_threaded_mainloop_unlock(mainloop);
+        console_error("failed to connect stream", err);
+        stop();
+        return;
     }
 
     m_active_spec = m_incoming_spec;
 
-    if (rewind_active) {
-    const pa_buffer_attr* received_attr = g_pa_stream_get_buffer_attr(stream);
-    if (received_attr == NULL) {
-        console_error("failed to get server buffer attributes", 0);
-        rewind_buffer.reset(attr.maxlength);
-    } else {
-        std::stringstream s;
-        s << "Pulseaudio: got buffer attributes: maxlength "
-        << received_attr->maxlength << ", minreq " << received_attr->minreq
-        << ", tlength " << received_attr->tlength << ", prebuf "
-        << received_attr->prebuf;
-        console::info(s.str().c_str());
-        rewind_buffer.reset(received_attr->maxlength);
-    }
+    if (rewind_active)
+    {
+        const pa_buffer_attr* received_attr = g_pa_stream_get_buffer_attr(stream);
+        if (!received_attr)
+        {
+            console::error("Error getting stream buffer attributes");
+            rewind_buffer.reset(attr.maxlength);
+        }
+        else
+        {
+            std::stringstream s;
+            s << "Pulseaudio: got buffer attributes: maxlength "
+            << received_attr->maxlength << ", minreq " << received_attr->minreq
+            << ", tlength " << received_attr->tlength << ", prebuf "
+            << received_attr->prebuf;
+            console::info(s.str().c_str());
+            rewind_buffer.reset(received_attr->maxlength);
+        }
     }
 
     g_pa_threaded_mainloop_unlock(mainloop);
@@ -785,7 +813,8 @@ void output_pulse::console_error(const char* prefix, int error_code)
     s << "Pulseaudio: ";
     s << prefix;
 
-    if (error_code != 0) {
+    if (error_code != 0)
+    {
         const char* error = g_pa_strerror(error_code);
         if (error != NULL) {
             s << ": " << error;
