@@ -189,7 +189,7 @@ private:
     // opens a pulseaudio stream for the incoming spec
     void open_incoming_spec();
     // wrapper for logging errors into the console
-    static void console_error(const char*, int) {
+    static void console_error(const char*, int);
     // callback for something
     static void stream_drained_cb(pa_stream*, int, void*);
     // loads external functions from libpulse-0.dll
