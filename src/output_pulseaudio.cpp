@@ -969,4 +969,7 @@ class output_pulse : public output_v4 {
         }
     }; // class output_pulse
 
+    // needs to reside where the class definition is, so keep this here for now
+    static output_factory_t<output_pulse> g_output_pulse_factory;
+
 }  // namespace

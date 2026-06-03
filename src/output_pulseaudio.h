@@ -95,7 +95,4 @@ namespace {
     static advconfig_integer_factory cfg_pulseaudio_track_fade_in("Fade in on manual track change (milliseconds)", guid_cfg_pulseaudio_fade_in_track, guid_cfg_pulseaudio_branch, 0, 0, 0, 1000, 0);
     static advconfig_checkbox_factory cfg_pulseaudio_minreq_workaround("Enable workaround for driver issue", guid_cfg_pulseaudio_minreq_workaround, guid_cfg_pulseaudio_branch, 0, false);
     static advconfig_integer_factory cfg_pulseaudio_prebuf("Request prebuffer (milliseconds)", guid_cfg_pulseaudio_prebuffer, guid_cfg_pulseaudio_branch, 0, 200, 0, 100000, 0);
-
-    // seems to be unused
-    //static output_factory_t<output_pulse> g_output_pulse_factory;
 }
