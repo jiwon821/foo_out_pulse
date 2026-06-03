@@ -854,12 +854,12 @@ class output_pulse : public output_v4 {
     console::error(s.str().c_str());
   }
 
-  static void stream_drained_cb(pa_stream* s, int success, void* userdata) {
-    output_pulse* output = (output_pulse*)userdata;
-    output->draining = false;
-    output->drained = true;
-    output->trigger_update.set_state(true);
-  }
+        static void stream_drained_cb(pa_stream* s, int success, void* userdata) {
+            output_pulse* output = (output_pulse*)userdata;
+            output->draining = false;
+            output->drained = true;
+            output->trigger_update.set_state(true);
+        }
 
         static bool load_pulse_dll()
         {
@@ -880,9 +880,8 @@ class output_pulse : public output_v4 {
             libpulse = LoadLibraryExW(wpath_libpulse.str().c_str(), NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
 
             if (libpulse == NULL) {
-                std::stringstream error;
-                error << "Could not load libpulse-0.dll: error code " << GetLastError();
-                console::error(error.str().c_str());
+                // we don't really do much with the error code at this point
+                console::error("Could not load libpulse-0.dll");
                 return false;
             }
 
@@ -1018,7 +1017,7 @@ class output_pulse : public output_v4 {
                 g_pa_context_set_subscribe_callback == NULL ||
                 g_pa_usec_to_bytes == NULL)
             {
-                console::error("Could not load libpulse-0.dll");
+                console::error("Error loading external functions from libpulse-0.dll");
                 return false;
             }
 
