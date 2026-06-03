@@ -13,7 +13,6 @@
 
 namespace {
 typedef HRESULT(CALLBACK* LPFNDLLFUNC1)(DWORD, UINT*);
-static pa_strerror g_pa_strerror;
 static pa_threaded_mainloop_new g_pa_threaded_mainloop_new;
 static pa_threaded_mainloop_free g_pa_threaded_mainloop_free;
 static pa_threaded_mainloop_start g_pa_threaded_mainloop_start;
