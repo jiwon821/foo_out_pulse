@@ -1,7 +1,5 @@
 #pragma once
 
-#include <stdint.h>
-
 // I suppose these have been copied from various pulseaudio header files, but I haven't found a definite source
 // no idea which version either
 
