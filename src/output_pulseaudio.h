@@ -87,6 +87,8 @@ static const GUID guid_cfg_pulseaudio_minreq_workaround = {0xe176bd02, 0xcbc, 0x
 // seems to be unused
 //static const GUID guid_cfg_pulseaudio_fade_out_stop = {0xbf045192, 0xde9b, 0x432d, {0xa5, 0xd9, 0x36, 0xb1, 0x19, 0x57, 0x6a, 0x61} };
 static const GUID guid_cfg_pulseaudio_prebuffer = {0x64cd1e28, 0x87ea, 0x41e5, {0xaf, 0x3d, 0xc6, 0xcd, 0x2f, 0x52, 0xac, 0xee} };
+// moved here from g_enum_devices, I guess it's used for getting the pulseaudio output "device" to foobar2000
+static const GUID guid_cfg_pulseaudio_device = {0x8bf1c19, 0x5b9d, 0x4992, {0x76, 0x18, 0x13, 0x8b, 0xa2, 0x1, 0xd7, 0xa6} };
 
 // and the actual settings under advanced settings
 static advconfig_branch_factory g_pulseaudio_output_branch("Pulseaudio output", guid_cfg_pulseaudio_branch, advconfig_branch::guid_branch_playback, 0);

@@ -32,18 +32,20 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
         next_write_relative(false),
         volume(0)
 {
-    if (!load_pulse_dll()) {
-      stop();
-      return;
+    if (!load_pulse_dll())
+    {
+        stop();
+        return;
     }
 
     mainloop = g_pa_threaded_mainloop_new();
-    if (g_pa_threaded_mainloop_start(mainloop) < 0) {
-      g_pa_threaded_mainloop_free(mainloop);
-      mainloop = NULL;
-      console_error("failed to start playback thread", 0);
-      stop();
-      return;
+    if (g_pa_threaded_mainloop_start(mainloop) < 0)
+    {
+        g_pa_threaded_mainloop_free(mainloop);
+        mainloop = NULL;
+        console_error("failed to start playback thread", 0);
+        stop();
+        return;
     }
     pa_proplist* proplist = g_pa_proplist_new();
     g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_NAME, "foobar2000");
@@ -58,24 +60,23 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
 
     g_pa_context_set_state_callback(context, context_state_cb, this);
     const char* server = "127.0.0.1";
-    if (g_pa_context_connect(context, server, (pa_context_flags_t)0, NULL) <
-            0 ||
-        context_wait(context, mainloop)) {
-      g_pa_context_unref(context);
-      context = NULL;
-      g_pa_threaded_mainloop_unlock(mainloop);
-      g_pa_threaded_mainloop_stop(mainloop);
-      g_pa_threaded_mainloop_free(mainloop);
-      mainloop = NULL;
+    if (g_pa_context_connect(context, server, (pa_context_flags_t)0, NULL) < 0 || context_wait(context, mainloop))
+    {
+        g_pa_context_unref(context);
+        context = NULL;
+        g_pa_threaded_mainloop_unlock(mainloop);
+        g_pa_threaded_mainloop_stop(mainloop);
+        g_pa_threaded_mainloop_free(mainloop);
+        mainloop = NULL;
 
-      stop();
-      return;
+        stop();
+        return;
     }
 
-    pa_operation* op = g_pa_context_subscribe(
-        context, PA_SUBSCRIPTION_MASK_SINK_INPUT, NULL, NULL);
-    if (op != NULL) {
-      g_pa_operation_unref(op);
+    pa_operation* op = g_pa_context_subscribe(context, PA_SUBSCRIPTION_MASK_SINK_INPUT, NULL, NULL);
+    if (op != NULL)
+    {
+        g_pa_operation_unref(op);
     }
     g_pa_context_set_subscribe_callback(context, context_subscribe_cb, this);
 
@@ -86,20 +87,22 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
 
 output_pulse::~output_pulse()
 {
-    if (mainloop != NULL) {
-      g_pa_threaded_mainloop_lock(mainloop);
-      if (context != NULL) {
-        g_pa_context_disconnect(context);
-        g_pa_context_set_event_callback(context, NULL, NULL);
-        g_pa_context_set_state_callback(context, NULL, NULL);
-        g_pa_context_unref(context);
-      }
-      g_pa_threaded_mainloop_unlock(mainloop);
+    if (mainloop != NULL)
+    {
+        g_pa_threaded_mainloop_lock(mainloop);
+        if (context != NULL)
+        {
+            g_pa_context_disconnect(context);
+            g_pa_context_set_event_callback(context, NULL, NULL);
+            g_pa_context_set_state_callback(context, NULL, NULL);
+            g_pa_context_unref(context);
+        }
+        g_pa_threaded_mainloop_unlock(mainloop);
 
-      g_pa_threaded_mainloop_stop(mainloop);
-      Sleep(100);  // _stop() doesn't seem to block until it's actually safe to
-                   // free the mainloop?
-      g_pa_threaded_mainloop_free(mainloop);
+        g_pa_threaded_mainloop_stop(mainloop);
+        Sleep(100);  // _stop() doesn't seem to block until it's actually safe to
+                    // free the mainloop?
+        g_pa_threaded_mainloop_free(mainloop);
     }
 }
 
@@ -136,9 +139,9 @@ void output_pulse::volume_set(double p_val)
     g_pa_cvolume_set(&cvolume, m_active_spec.m_channels, volume);
 
     g_pa_threaded_mainloop_lock(mainloop);
-    pa_operation* op = g_pa_context_set_sink_input_volume(
-        context, index, &cvolume, NULL, NULL);
-    if (op != NULL) {
+    pa_operation* op = g_pa_context_set_sink_input_volume(context, index, &cvolume, NULL, NULL);
+    if (op != NULL)
+    {
         g_pa_operation_unref(op);
     }
     g_pa_threaded_mainloop_unlock(mainloop);
@@ -174,21 +177,27 @@ size_t output_pulse::update_v2()
 {
     trigger_update.set_state(false);
 
-    if (m_incoming_spec != m_active_spec) {
-      if (drained || next_write_relative) {
-        next_write_relative = false;
-        drained = false;
-        open_incoming_spec();
-      } else {
-        force_play();
-      }
+    if (m_incoming_spec != m_active_spec)
+    {
+        if (drained || next_write_relative)
+        {
+            next_write_relative = false;
+            drained = false;
+            open_incoming_spec();
+        }
+        else
+        {
+            force_play();
+        }
     }
 
     size_t retCanWriteSamples = 0;
-    if (m_incoming_spec == m_active_spec &&
-        m_incoming_ptr < m_incoming.get_size()) {
+    if (m_incoming_spec == m_active_spec && m_incoming_ptr < m_incoming.get_size())
+    {
       retCanWriteSamples = write();
-    } else if (m_incoming_ptr == m_incoming.get_size()) {
+    }
+    else if (m_incoming_ptr == m_incoming.get_size())
+    {
       retCanWriteSamples = SIZE_MAX;
     }
     return retCanWriteSamples;
@@ -196,28 +205,38 @@ size_t output_pulse::update_v2()
 
 void output_pulse::force_play()
 {
-    if (draining) return;
+    if (draining)
+    {
+        return;
+    }
 
-    if (stream != NULL) {
-      g_pa_threaded_mainloop_lock(mainloop);
-      draining = true;
-      drained = false;
-      pa_operation* op = g_pa_stream_drain(stream, stream_drained_cb, this);
-      if (op != NULL) {
-        g_pa_operation_unref(op);
-      } else {
-        // nothing to drain
+    if (stream != NULL)
+    {
+        g_pa_threaded_mainloop_lock(mainloop);
+        draining = true;
+        drained = false;
+        pa_operation* op = g_pa_stream_drain(stream, stream_drained_cb, this);
+        if (op != NULL)
+        {
+            g_pa_operation_unref(op);
+        }
+        else
+        {
+            // nothing to drain
+            draining = false;
+            drained = true;
+        }
+        op = g_pa_stream_trigger(stream, NULL, NULL);
+        if (op != NULL)
+        {
+            g_pa_operation_unref(op);
+        }
+        g_pa_threaded_mainloop_unlock(mainloop);
+    }
+    else
+    {
         draining = false;
         drained = true;
-      }
-      op = g_pa_stream_trigger(stream, NULL, NULL);
-      if (op != NULL) {
-        g_pa_operation_unref(op);
-      }
-      g_pa_threaded_mainloop_unlock(mainloop);
-    } else {
-      draining = false;
-      drained = true;
     }
 }
 
@@ -297,12 +316,10 @@ pfc::eventHandle_t output_pulse::get_trigger_event()
 
 void output_pulse::g_enum_devices(output_device_enum_callback& p_callback)
 {
-    const GUID device = {0x8bf1c19,
-                         0x5b9d,
-                         0x4992,
-                         {0x76, 0x18, 0x13, 0x8b, 0xa2, 0x1, 0xd7, 0xa6}};
-    if (load_pulse_dll()) {
-        p_callback.on_device(device, "localhost", 9);
+    // run the callback if the pulseaudio libraries are or have been loaded successfully
+    if (load_pulse_dll())
+    {
+        p_callback.on_device(guid_cfg_pulseaudio_device, "localhost", 9);
     }
 }
 
