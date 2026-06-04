@@ -222,9 +222,15 @@ private:
     size_t m_incoming_ptr;
     t_samplespec m_incoming_spec, m_active_spec;
 
+    // wrapper for connecting the pulseaudio context, returns true on success
+    bool context_connect(pa_threaded_mainloop *, pa_context *, const char *, );
+
+    // our pulseaudio context
+    pa_context *context;
+    // and mainloop
+    pa_threaded_mainloop *mainloop;
+
     const double offset = 0.05;
-    pa_context* context = NULL;
-    pa_threaded_mainloop* mainloop = NULL;
     double buffer_length;
     pa_volume_t volume;
     bool next_write_relative;

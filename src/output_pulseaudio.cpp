@@ -16,13 +16,12 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
         volume(0)
 {
     stream = NULL;
+    context = NULL;
+    mainloop = NULL;
     progressing = false;
     draining = false;
     drained = false;
     m_incoming_ptr = 0;
-
-    pfc::string8 pulseaudio_server_string;
-    std::stringstream connection_info;
 
     if (!load_pulse_dll())
     {
@@ -55,14 +54,10 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
         g_pa_proplist_free(proplist);
     }
 
+    // notifies context_state_cb when the server connection is established below
     g_pa_context_set_state_callback(context, context_state_cb, this);
 
-    // read server connection string from settings and connect
-    cfg_pulseaudio_server.get(pulseaudio_server_string);
-    connection_info << OUTPUT_NAME << ": connecting to " << pulseaudio_server_string;
-    console::info(connection_info.str().c_str());
-
-    if (g_pa_context_connect(context, pulseaudio_server_string, (pa_context_flags_t)0, NULL) < 0 || context_wait(context, mainloop))
+    if (!context_connect())
     {
         g_pa_context_unref(context);
         context = NULL;
@@ -71,20 +66,55 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
         g_pa_threaded_mainloop_free(mainloop);
         mainloop = NULL;
 
+        // full playback stop
         stop();
         return;
     }
 
-    pa_operation* op = g_pa_context_subscribe(context, PA_SUBSCRIPTION_MASK_SINK_INPUT, NULL, NULL);
-    if (op)
-    {
-        g_pa_operation_unref(op);
-    }
-    g_pa_context_set_subscribe_callback(context, context_subscribe_cb, this);
-
     g_pa_threaded_mainloop_unlock(mainloop);
 
     trigger_update.create(true, true);
+}
+
+bool output_pulse::context_connect()
+{
+    pfc::string8 server_string;
+    pa_context_state_t state;
+    pa_operation *operation;
+
+    // read server connection string from settings
+    cfg_pulseaudio_server.get(server_string);
+
+    // connect context to server, returns negative on certain errors: https://www.freedesktop.org/software/pulseaudio/doxygen/context_8h.html#a983ce13d45c5f4b0db8e1a34e21f9fce
+    if (g_pa_context_connect(context, server_string, (pa_context_flags_t)0, NULL) < 0)
+    {
+        console::error("pa_context_connect failure");
+        return false;
+    }
+
+    // wait until ready
+    while ((state = g_pa_context_get_state(context)) != PA_CONTEXT_READY)
+    {
+        if (state == PA_CONTEXT_FAILED || state == PA_CONTEXT_TERMINATED)
+        {
+            console::error("pa_context_get_state returned error code");
+            return false;
+        }
+
+        g_pa_threaded_mainloop_wait(mainloop);
+    }
+
+    // subscribe to event notifications: https://www.freedesktop.org/software/pulseaudio/doxygen/subscribe_8h.html#abe684246fd5cb640b0199bcfe7f801b0
+    if (operation = g_pa_context_subscribe(context, PA_SUBSCRIPTION_MASK_SINK_INPUT, NULL, NULL))
+    {
+        g_pa_operation_unref(operation);
+    }
+
+    // call context_subscribe_callback on events: https://www.freedesktop.org/software/pulseaudio/doxygen/subscribe_8h.html#a55281f798863e7b37594d347be7ad98c
+    g_pa_context_set_subscribe_callback(context, context_subscribe_cb, this);
+
+    console::info("pa_context_connect success");
+    return true;
 }
 
 output_pulse::~output_pulse()
