@@ -311,31 +311,24 @@ double output_pulse::get_latency()
     return latency_sec;
 }
 
-void output_pulse::process_samples(const audio_chunk& p_chunk)
+void output_pulse::process_samples(const audio_chunk &p_chunk)
 {
-    pfc::dynamic_assert(m_incoming_ptr == m_incoming.get_size());
     t_samplespec spec;
+
+    // I dunno why we check for exactly this, maybe because we need to have processed all samples
+    pfc::dynamic_assert(m_incoming_ptr == m_incoming.get_size());
+
     spec.fromchunk(p_chunk);
-    if (!spec.is_valid())
+    if (spec.is_valid())
     {
-        // TODO: I wonder if a console::error would suffice
+        m_incoming.set_data_fromptr(p_chunk.get_data(), p_chunk.get_used_size());
+        m_incoming_ptr = 0;
+        m_incoming_spec = spec;
+    }
+    else
+    {
         pfc::throw_exception_with_message<exception_io_data>("Invalid audio stream specifications");
     }
-
-    m_incoming_spec = spec;
-    size_t length = p_chunk.get_used_size();
-    m_incoming.set_data_fromptr(p_chunk.get_data(), length);
-    m_incoming_ptr = 0;
-}
-
-bool output_pulse::is_progressing()
-{
-    return progressing;
-}
-
-pfc::eventHandle_t output_pulse::get_trigger_event()
-{
-    return trigger_update.get_handle();
 }
 
 bool output_pulse::context_wait(pa_context* ctx, pa_threaded_mainloop* ml)
