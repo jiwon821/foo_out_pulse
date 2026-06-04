@@ -760,7 +760,7 @@ bool output_pulse::load_pulse_dll()
 
     // set our flag to indicate success
     g_pa_is_loaded = true;
-    console::info("Successfully loaded libpulse-0.dll");
+    console_message("Successfully loaded libpulse-0.dll");
     return true;
 }
 
@@ -775,4 +775,23 @@ void output_pulse::g_enum_devices(output_device_enum_callback& p_callback)
         cfg_pulseaudio_server.get(pulseaudio_server_string);
         p_callback.on_device(guid_cfg_pulseaudio_device, pulseaudio_server_string, 9);
     }
+}
+
+void output_pulse::console_message(const char* format, ...)
+{
+    const size_t buffer_size = 2048;
+    char buffer[buffer_size];
+    va_list p_arg;
+
+    va_start(p_arg, format);
+    if (vsnprintf_s(buffer, buffer_size, format, p_arg) > -1)
+    {
+        // just dump to info
+        console::info(buffer);
+    }
+    else
+    {
+        console::error("vsnprintf_s returned error");
+    }
+    va_end(p_arg);
 }
