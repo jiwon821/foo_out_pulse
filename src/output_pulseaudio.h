@@ -113,11 +113,18 @@ public:
     void update(bool&);
     size_t update_v2();
     void force_play();
-    double get_latency();
 
     void process_samples(const audio_chunk&);
-    bool is_progressing();
     pfc::eventHandle_t get_trigger_event();
+
+    // whether the audio stream is being played or not, defined in output
+    bool output_pulse::is_progressing()
+    {
+        return progressing;
+    }
+
+    // seconds of audio data queued for playback, defined in output
+    double get_latency();
 
     // pauses (true) or resumes (false) the stream depending on the parameter
     void pause(bool);
@@ -190,18 +197,36 @@ public:
     }
 
 private:
+    // stops playback, used only ever in error situations
+    static void stop()
+    {
+        fb2k::inMainThread([]()
+        {
+            playback_control::get()->stop();
+        });
+    }
+
+    // our pulseaudio playback stream
+    pa_stream* stream;
+
+    // is the audio stream being played or not, read by is_progressing
+    bool progressing;
+
+    // is the audio stream being drained or already drained
+    bool draining;
+    bool drained;
+
+    // incoming samples, defined in output
+    pfc::array_t<audio_sample, pfc::alloc_fast_aggressive> m_incoming;
+    // array element pointer
+    size_t m_incoming_ptr;
+    t_samplespec m_incoming_spec, m_active_spec;
+
     const double offset = 0.05;
     pa_context* context = NULL;
     pa_threaded_mainloop* mainloop = NULL;
-    pa_stream* stream = NULL;
-    pfc::array_t<audio_sample, pfc::alloc_fast_aggressive> m_incoming;
-    size_t m_incoming_ptr;
-    t_samplespec m_incoming_spec, m_active_spec;
     double buffer_length;
     pa_volume_t volume;
-    bool progressing;
-    bool draining;
-    bool drained;
     bool next_write_relative;
     pfc::event trigger_update;
     service_ptr_t<playback_control> playback_control;
@@ -210,8 +235,6 @@ private:
     static bool context_wait(pa_context*, pa_threaded_mainloop*);
     static void context_subscribe_cb(pa_context*, pa_subscription_event_type_t, uint32_t, void*);
     static void sink_input_info_cb(pa_context*, const pa_sink_input_info*, int, void*);
-    // stops playback
-    static void stop();
     // no idea what
     static void context_state_cb(pa_context*, void*);
     // stream methods and callbacks
@@ -224,8 +247,6 @@ private:
     size_t write();
     // signals something to the pulseaudio mainloop
     static void stream_success_cb(pa_stream*, int, void*);
-    // waits until the pulseaudio operation has been completed
-    void wait_for_op(pa_operation*);
     // closes the pulseaudio stream
     void close_stream();
     // opens a pulseaudio stream for the incoming spec
