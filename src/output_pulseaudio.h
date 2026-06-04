@@ -117,7 +117,7 @@ public:
     void force_play();
 
     // process incoming audio samples from the audio chunk
-    void process_samples(const audio_chunk &);
+    void process_samples(const audio_chunk&);
 
     // whether the audio stream is being played or not, defined in output
     bool is_progressing()
@@ -132,7 +132,7 @@ public:
     void pause(bool);
 
     // called by enum_devices() in output
-    static void g_enum_devices(output_device_enum_callback &);
+    static void g_enum_devices(output_device_enum_callback&);
 
     // called by get_guid() in output
     static GUID g_get_guid()
@@ -227,6 +227,9 @@ private:
     // wrapper for connecting the pulseaudio context, returns true on success
     bool context_connect();
 
+    // wrapper for connecting the pulseaudio stream, returns true on success
+    bool stream_connect(const pa_sample_spec*, const pa_buffer_attr*);
+
     // our pulseaudio context
     pa_context *context;
     // and mainloop
@@ -240,7 +243,6 @@ private:
     service_ptr_t<playback_control> playback_control;
 
     // no idea
-    static bool context_wait(pa_context*, pa_threaded_mainloop*);
     static void context_subscribe_cb(pa_context*, pa_subscription_event_type_t, uint32_t, void*);
     static void sink_input_info_cb(pa_context*, const pa_sink_input_info*, int, void*);
     // no idea what
@@ -259,15 +261,22 @@ private:
     void close_stream();
     // opens a pulseaudio stream for the incoming spec
     void open_incoming_spec();
-    // wrapper for logging errors into the console
-    static void console_error(const char*, int);
     // callback for something
     static void stream_drained_cb(pa_stream*, int, void*);
     // loads external functions from libpulse-0.dll
     static bool load_pulse_dll();
-
+     
+    // write the specified pulseaudio error code to console
+    static void pa_console_error(const char*, int);
     // write messages to the console
-    static void console_message(const char*, ...);
+    enum Severity
+    {
+        Error,
+        Info,
+    };
+    static void console_message(Severity, const char*, va_list);
+    static void console_error(const char*, ...);
+    static void console_info(const char*, ...);
 };
 
 // needs to reside where the class definition is

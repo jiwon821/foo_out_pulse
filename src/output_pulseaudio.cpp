@@ -34,7 +34,7 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
     {
         g_pa_threaded_mainloop_free(mainloop);
         mainloop = NULL;
-        console::error("Error starting playback thread");
+        console_error("pa_threaded_mainloop_start");
         stop();
         return;
     }
@@ -88,7 +88,7 @@ bool output_pulse::context_connect()
     // connect context to server, returns negative on certain errors: https://www.freedesktop.org/software/pulseaudio/doxygen/context_8h.html#a983ce13d45c5f4b0db8e1a34e21f9fce
     if (g_pa_context_connect(context, server_string, (pa_context_flags_t)0, NULL) < 0)
     {
-        console::error("pa_context_connect failure");
+        console_error("pa_context_connect");
         return false;
     }
 
@@ -97,7 +97,7 @@ bool output_pulse::context_connect()
     {
         if (state == PA_CONTEXT_FAILED || state == PA_CONTEXT_TERMINATED)
         {
-            console::error("pa_context_get_state returned error code");
+            console_error("pa_context_get_state");
             return false;
         }
 
@@ -113,7 +113,7 @@ bool output_pulse::context_connect()
     // call context_subscribe_callback on events: https://www.freedesktop.org/software/pulseaudio/doxygen/subscribe_8h.html#a55281f798863e7b37594d347be7ad98c
     g_pa_context_set_subscribe_callback(context, context_subscribe_cb, this);
 
-    console::info("pa_context_connect success");
+    console_info("pa_context_connect success");
     return true;
 }
 
@@ -303,7 +303,7 @@ double output_pulse::get_latency()
         if (!(timing_info = g_pa_stream_get_timing_info(stream)))
         {
             // timing info received for the first time, log that for now: https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#a090147751441a97e04a4acef1d6514cb
-            console::info("Received initial timing information");
+            console_info("Received initial timing information");
         }
 
         // returns negative on error, 0 on success: https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#aa521efcc16fe2abf0f8461462432ac16
@@ -314,7 +314,7 @@ double output_pulse::get_latency()
         else
         {
             // need to update timing information
-            console::info("Updating timing information");
+            console_info("Updating timing information");
             g_pa_threaded_mainloop_lock(mainloop);
 
             if (operation = g_pa_stream_update_timing_info(stream, stream_success_cb, mainloop))
@@ -333,7 +333,7 @@ double output_pulse::get_latency()
             }
             else
             {
-                console::error("pa_stream_get_latency returned error after timing information update");
+                console_error("pa_stream_get_latency returned error after timing information update");
             }
         }
     }
@@ -361,20 +361,6 @@ void output_pulse::process_samples(const audio_chunk &p_chunk)
     }
 }
 
-bool output_pulse::context_wait(pa_context* ctx, pa_threaded_mainloop* ml)
-{
-    pa_context_state_t state;
-    while ((state = g_pa_context_get_state(ctx)) != PA_CONTEXT_READY)
-    {
-        if (state == PA_CONTEXT_FAILED || state == PA_CONTEXT_TERMINATED)
-        {
-            return false;
-        }
-        g_pa_threaded_mainloop_wait(ml);
-    }
-    return 0;
-}
-
 void output_pulse::context_subscribe_cb(pa_context* c, pa_subscription_event_type_t t, uint32_t idx, void* userdata)
 {
     if ((pa_subscription_event_type)(t & PA_SUBSCRIPTION_EVENT_SINK_INPUT) == PA_SUBSCRIPTION_EVENT_SINK_INPUT)
@@ -393,13 +379,13 @@ void output_pulse::context_subscribe_cb(pa_context* c, pa_subscription_event_typ
 
 void output_pulse::sink_input_info_cb(pa_context* c, const pa_sink_input_info* i, int eol, void* userdata)
 {
-    output_pulse* output = (output_pulse*)userdata;
-    if (!i || !output)
+    output_pulse* o = (output_pulse*)userdata;
+    if (!i || !o)
     {
         return;
     }
 
-    if (g_pa_cvolume_valid(&i->volume) && output->volume != i->volume.values[0])
+    if (g_pa_cvolume_valid(&i->volume) && o->volume != i->volume.values[0])
     {
         float volume_db = (float)g_pa_sw_volume_to_dB(i->volume.values[0]);
         fb2k::inMainThread([volume_db]()
@@ -416,27 +402,12 @@ void output_pulse::context_state_cb(pa_context* ctx, void* userdata)
     switch (g_pa_context_get_state(ctx))
     {
     case PA_CONTEXT_FAILED:
-        console_error("connection failed", g_pa_context_errno(ctx));
+        console_error("pa_context_get_state", g_pa_context_errno(ctx));
         stop();
     case PA_CONTEXT_READY:
     case PA_CONTEXT_TERMINATED:
         g_pa_threaded_mainloop_signal(output->mainloop, 0);
     }
-}
-
-int output_pulse::stream_wait(pa_stream* s, pa_threaded_mainloop* ml)
-{
-    pa_stream_state_t state;
-
-    while ((state = g_pa_stream_get_state(s)) != PA_STREAM_READY)
-    {
-        if (state == PA_STREAM_FAILED || state == PA_STREAM_TERMINATED)
-        {
-            return -1;
-        }
-        g_pa_threaded_mainloop_wait(ml);
-    }
-    return 0;
 }
 
 void output_pulse::stream_state_cb(pa_stream* s, void* userdata)
@@ -454,21 +425,21 @@ void output_pulse::stream_state_cb(pa_stream* s, void* userdata)
 
 void output_pulse::stream_started_cb(pa_stream* s, void* userdata)
 {
-    output_pulse* output = (output_pulse*)userdata;
-    output->progressing = true;
+    output_pulse* o = (output_pulse*)userdata;
+    o->progressing = true;
 }
 
 void output_pulse::stream_underflow_cb(pa_stream* s, void* userdata)
 {
-    output_pulse* output = (output_pulse*)userdata;
-    output->progressing = false;
-    output->trigger_update.set_state(true);
+    output_pulse* o = (output_pulse*)userdata;
+    o->progressing = false;
+    o->trigger_update.set_state(true);
 }
 
 void output_pulse::stream_write_cb(pa_stream* s, size_t nbytes, void* userdata)
 {
-    output_pulse* output = (output_pulse*)userdata;
-    output->trigger_update.set_state(true);
+    output_pulse* o = (output_pulse*)userdata;
+    o->trigger_update.set_state(true);
 }
 
 size_t output_pulse::write()
@@ -483,7 +454,7 @@ size_t output_pulse::write()
         const pa_timing_info* info = g_pa_stream_get_timing_info(stream);
         if (!info)
         {
-            console::error("Error getting stream timing info");
+            console_error("pa_stream_get_timing_info");
             g_pa_threaded_mainloop_unlock(mainloop);
             return 0;
         }
@@ -493,7 +464,7 @@ size_t output_pulse::write()
         const pa_buffer_attr* buffer_attr = g_pa_stream_get_buffer_attr(stream);
         if (!buffer_attr)
         {
-            console::error("Error getting stream buffer attributes");
+            console_error("pa_stream_get_buffer_attr");
             g_pa_threaded_mainloop_unlock(mainloop);
             return 0;
         }
@@ -506,7 +477,7 @@ size_t output_pulse::write()
             delta * sizeof(audio_sample), NULL, write_index, PA_SEEK_ABSOLUTE);
             if (error < 0)
             {
-                console_error("error writing to stream", error);
+                console_error("pa_stream_write", error);
                 g_pa_threaded_mainloop_unlock(mainloop);
                 return (cw_samples - delta) / m_incoming_spec.m_channels;
             }
@@ -525,7 +496,7 @@ size_t output_pulse::write()
         size_t cw_samples = g_pa_stream_writable_size(stream) / sizeof(audio_sample);
         if (cw_samples == (size_t)-1)
         {
-            console_error("g_pa_stream_writable_size error", g_pa_context_errno(context));
+            console_error("pa_stream_writable_size", g_pa_context_errno(context));
             return 0;
         }
 
@@ -536,7 +507,7 @@ size_t output_pulse::write()
             int error = g_pa_stream_write(stream, m_incoming.get_ptr() + m_incoming_ptr, delta * sizeof(audio_sample), NULL, 0, PA_SEEK_RELATIVE);
             if (error < 0)
             {
-                console_error("error writing to stream", error);
+                console_error("g_pa_stream_write", error);
                 g_pa_threaded_mainloop_unlock(mainloop);
                 return 0;
             }
@@ -554,7 +525,16 @@ size_t output_pulse::write()
 void output_pulse::stream_success_cb(pa_stream* s, int success, void* userdata)
 {
     // signal all waiting threads: https://www.freedesktop.org/software/pulseaudio/doxygen/thread-mainloop_8h.html#ad253b70911af81c04417793841a15766
-    g_pa_threaded_mainloop_signal((pa_threaded_mainloop*)userdata, 0);
+    pa_threaded_mainloop* m = (pa_threaded_mainloop*)userdata;
+    g_pa_threaded_mainloop_signal(m, 0);
+}
+
+void output_pulse::stream_drained_cb(pa_stream* s, int success, void* userdata)
+{
+    output_pulse* o = (output_pulse*)userdata;
+    o->draining = false;
+    o->drained = true;
+    o->trigger_update.set_state(true);
 }
 
 void output_pulse::close_stream()
@@ -572,95 +552,159 @@ void output_pulse::close_stream()
     }
 }
 
-void output_pulse::open_incoming_spec()
+bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr* attr)
 {
-    if (!m_incoming_spec.is_valid())
+    pa_stream_flags_t flags;
+    pa_channel_map map;
+    pa_channel_map* p_map;
+    pa_stream_state_t state;
+
+    // smooth graphs and automatic timing updates, whereever that matters
+    flags = (pa_stream_flags_t)(PA_STREAM_INTERPOLATE_TIMING | PA_STREAM_AUTO_TIMING_UPDATE);
+
+    // returns null if no mapping is found, and that is also valid: https://freedesktop.org/software/pulseaudio/doxygen/channelmap_8h.html#ab7d13111387d169484853f713b68f9cc
+    // waveex uses microsoft's waveformatextensible mapping, which is how it originally was in the code: https://freedesktop.org/software/pulseaudio/doxygen/channelmap_8h.html#a61d273ea6bd3f09d79ffdec9e084f137
+    p_map = g_pa_channel_map_init_auto(&map, ss->channels, PA_CHANNEL_MAP_WAVEEX);
+
+    if (!(stream = g_pa_stream_new(context, "Audio", ss, p_map)))
     {
-        console::info("Invalid incoming_spec");
-        return;
+        console_error("pa_stream_new");
+        return false;
     }
 
-    pa_sample_spec ss;
-    ss.channels = m_incoming_spec.m_channels;
-    ss.rate = m_incoming_spec.m_sample_rate;
-    ss.format = PA_SAMPLE_FLOAT32LE;
-
-    struct pa_channel_map map;
-    const pa_channel_map* map_ptr = g_pa_channel_map_init_auto(&map, ss.channels, PA_CHANNEL_MAP_WAVEEX);
-
-    pa_stream_flags_t flags = (pa_stream_flags_t)(PA_STREAM_INTERPOLATE_TIMING | PA_STREAM_AUTO_TIMING_UPDATE);
-
-    struct pa_buffer_attr attr;
-    attr.maxlength = (uint32_t)ceil(m_incoming_spec.time_to_samples(buffer_length + offset) * m_incoming_spec.m_channels * 4);
-    attr.fragsize = 0;
-    attr.minreq = cfg_pulseaudio_minreq_workaround.get() ? attr.maxlength / 2 : (uint32_t)-1;
-    attr.tlength = attr.maxlength;
-    attr.prebuf = (uint32_t)ceil(m_incoming_spec.time_to_samples(0.001 * cfg_pulseaudio_prebuf) * m_incoming_spec.m_channels * 4);
-
-    std::stringstream s;
-    s << "Pulseaudio: requesting buffer attributes: maxlength "
-    << attr.maxlength << ", minreq " << attr.minreq << ", tlength "
-    << attr.tlength << ", prebuf " << attr.prebuf;
-    console::info(s.str().c_str());
-
-    g_pa_threaded_mainloop_lock(mainloop);
-
-    close_stream();
-
-    stream = g_pa_stream_new(context, "Audio", &ss, map_ptr);
-    progressing = false;
-    if (!stream)
-    {
-        g_pa_threaded_mainloop_unlock(mainloop);
-        console::error("Error creating stream");
-        stop();
-        return;
-    }
-
+    // set callbacks
     g_pa_stream_set_state_callback(stream, stream_state_cb, mainloop);
     g_pa_stream_set_started_callback(stream, stream_started_cb, this);
     g_pa_stream_set_underflow_callback(stream, stream_underflow_cb, this);
     g_pa_stream_set_write_callback(stream, stream_write_cb, this);
 
-    int err = g_pa_stream_connect_playback(stream, NULL, &attr, flags, NULL, NULL);
-    if (err < 0 || stream_wait(stream, mainloop))
+    // returns zero on success: https://freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#ab9544f6677af133fbe81bf8a21eb489c
+    if (g_pa_stream_connect_playback(stream, NULL, attr, flags, NULL, NULL) != 0)
+    {
+        console_error("pa_stream_connect_playback");
+        return false;
+    }
+
+    while ((state = g_pa_stream_get_state(stream)) != PA_STREAM_READY)
+    {
+        if (state == PA_STREAM_FAILED || state == PA_STREAM_TERMINATED)
+        {
+            console_error("pa_stream_get_state");
+            return false;
+        }
+        g_pa_threaded_mainloop_wait(mainloop);
+    }
+
+    return true;
+}
+
+void output_pulse::open_incoming_spec()
+{
+    const char* s_err;
+    pa_sample_spec ss;
+    pa_buffer_attr attr;
+
+    if (!m_incoming_spec.is_valid())
+    {
+        console_info("Invalid incoming_spec");
+        return;
+    }
+
+    // always uses the 32-bit float format, probably doesn't make a difference
+    ss.channels = m_incoming_spec.m_channels;
+    ss.rate = m_incoming_spec.m_sample_rate;
+    ss.format = PA_SAMPLE_FLOAT32LE;
+
+    // maximum length of the buffer in bytes
+    // TODO: ceil needed?
+    attr.maxlength = (uint32_t)ceil(m_incoming_spec.time_to_samples(buffer_length + offset) * m_incoming_spec.m_channels * 4);
+    // playback only: "recommended to set this to (uint32_t) -1, which will initialize this to a value that is deemed sensible by the server
+    // dunno why attr.maxlength was used before
+    attr.tlength = (uint32_t)-1;
+    // "server does not request less than minreq bytes from the client", "recommended to set this to (uint32_t) -1"
+    // here was the minreq workaround, so maybe will have to return to this later
+    //attr.minreq = cfg_pulseaudio_minreq_workaround.get() ? attr.maxlength / 2 : (uint32_t)-1;
+    attr.minreq = (uint32_t)-1;
+    // "server does not start with playback before at least prebuf bytes are available in the buffer", "recommended to set this to (uint32_t) -1, which will initialize this to the same value as tlength"
+    // TODO: the original is weird
+    //attr.prebuf = (uint32_t)ceil(m_incoming_spec.time_to_samples(0.001 * cfg_pulseaudio_prebuf) * m_incoming_spec.m_channels * 4);
+    attr.prebuf = (uint32_t)-1;
+    // recording only: fragment size, just zero it out
+    attr.fragsize = 0;
+
+    console_info("requesting buffer attributes: maxlength %zu, minreq %zu, tlength %zu, prebuf %zu", attr.maxlength, attr.minreq, attr.tlength, attr.prebuf);
+
+    g_pa_threaded_mainloop_lock(mainloop);
+
+    // I guess we close before creating a new stream
+    close_stream();
+    // hmm
+    progressing = false;
+
+    if (!stream_connect(&ss, &attr))
     {
         g_pa_threaded_mainloop_unlock(mainloop);
-        console_error("failed to connect stream", err);
         stop();
         return;
     }
 
     m_active_spec = m_incoming_spec;
-
     g_pa_threaded_mainloop_unlock(mainloop);
     trigger_update.set_state(true);
 }
 
-void output_pulse::console_error(const char* prefix, int error_code)
+void output_pulse::pa_console_error(const char *name, int err)
 {
-    std::stringstream s;
-    s << "Pulseaudio: ";
-    s << prefix;
+    const char* s_err;
 
-    if (error_code != 0)
+    if (s_err = g_pa_strerror(err))
     {
-        const char* error = g_pa_strerror(error_code);
-        if (error)
-        {
-            s << ": " << error;
-        }
+        console_error("%s: %s", name, s_err);
     }
-
-    console::error(s.str().c_str());
+    else
+    {
+        console_error("%s: unknown error", name);
+    }
 }
 
-void output_pulse::stream_drained_cb(pa_stream* s, int success, void* userdata)
+void output_pulse::console_message(Severity severity, const char* format, va_list args)
 {
-    output_pulse* output = (output_pulse*)userdata;
-    output->draining = false;
-    output->drained = true;
-    output->trigger_update.set_state(true);
+    const size_t buffer_size = 2048;
+    char buffer[buffer_size];
+
+    if (vsnprintf_s(buffer, buffer_size, format, args) < 0)
+    {
+        console::error("vsnprintf_s: unknown error");
+    }
+    else
+    {
+        switch (severity)
+        {
+        case Error:
+            console::error(buffer);
+            break;
+        default:
+            // this catches Info so no need to handle that separately
+            console::info(buffer);
+            break;
+        }
+    }
+}
+
+void output_pulse::console_error(const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    console_message(Error, format, args);
+    va_end(args);
+}
+
+void output_pulse::console_info(const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    console_message(Info, format, args);
+    va_end(args);
 }
 
 bool output_pulse::load_pulse_dll()
@@ -671,7 +715,7 @@ bool output_pulse::load_pulse_dll()
 
     if (g_pa_is_loaded)
     {
-        console::info("libpulse-0.dll already loaded");
+        console_info("libpulse-0.dll already loaded");
         return true;
     }
 
@@ -683,7 +727,7 @@ bool output_pulse::load_pulse_dll()
 
     if (!libpulse) {
         // we don't really do much with the error code at this point
-        console::error("Could not load libpulse-0.dll");
+        console_error("Could not load libpulse-0.dll");
         return false;
     }
 
@@ -754,13 +798,13 @@ bool output_pulse::load_pulse_dll()
         !(g_pa_threaded_mainloop_wait           = (pa_threaded_mainloop_wait)GetProcAddress(libpulse,           "pa_threaded_mainloop_wait")) ||
         !(g_pa_usec_to_bytes                    = (pa_usec_to_bytes)GetProcAddress(libpulse,                    "pa_usec_to_bytes")))
     {
-        console::error("Error loading external functions from libpulse-0.dll");
+        console_error("Error loading external functions from libpulse-0.dll");
         return false;
     }
 
     // set our flag to indicate success
     g_pa_is_loaded = true;
-    console_message("Successfully loaded libpulse-0.dll");
+    console_info("Successfully loaded libpulse-0.dll");
     return true;
 }
 
@@ -775,23 +819,4 @@ void output_pulse::g_enum_devices(output_device_enum_callback& p_callback)
         cfg_pulseaudio_server.get(pulseaudio_server_string);
         p_callback.on_device(guid_cfg_pulseaudio_device, pulseaudio_server_string, 9);
     }
-}
-
-void output_pulse::console_message(const char* format, ...)
-{
-    const size_t buffer_size = 2048;
-    char buffer[buffer_size];
-    va_list p_arg;
-
-    va_start(p_arg, format);
-    if (vsnprintf_s(buffer, buffer_size, format, p_arg) > -1)
-    {
-        // just dump to info
-        console::info(buffer);
-    }
-    else
-    {
-        console::error("vsnprintf_s returned error");
-    }
-    va_end(p_arg);
 }
