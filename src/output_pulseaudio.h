@@ -81,10 +81,6 @@ static bool g_pa_is_loaded = false;
 
 // component setting identifiers I guess
 static const GUID guid_cfg_pulseaudio_branch            = {0x61979096, 0x1158, 0x4860, {0xb0, 0xcc, 0x6f, 0x53, 0x0f, 0x35, 0xaf, 0x26} };
-static const GUID guid_cfg_pulseaudio_fade_out_seek     = {0x319d2507, 0xe2aa, 0x40e2, {0xa1, 0xec, 0x4e, 0x94, 0xf1, 0xdd, 0x12, 0x8a} };
-static const GUID guid_cfg_pulseaudio_fade_in_seek      = {0x90ae1a07, 0xcd2b, 0x481c, {0xb2, 0x6a, 0xf7, 0x36, 0x83, 0xec, 0xf6, 0x40} };
-static const GUID guid_cfg_pulseaudio_fade_out_track    = {0xe136e959, 0x929b, 0x4005, {0xaa, 0x9e, 0x8e, 0x8b, 0x91, 0x5b, 0x5d, 0x02} };
-static const GUID guid_cfg_pulseaudio_fade_in_track     = {0x06fb3670, 0x4e7d, 0x4601, {0x83, 0xa6, 0xed, 0x44, 0x3e, 0xb1, 0xe1, 0x07} };
 static const GUID guid_cfg_pulseaudio_minreq_workaround = {0xe176bd02, 0x0cbc, 0x4fbd, {0x8f, 0x1a, 0xf2, 0x3a, 0x2a, 0xb7, 0x08, 0x86} };
 static const GUID guid_cfg_pulseaudio_prebuffer         = {0x64cd1e28, 0x87ea, 0x41e5, {0xaf, 0x3d, 0xc6, 0xcd, 0x2f, 0x52, 0xac, 0xee} };
 // moved here from g_enum_devices, I guess it's used for getting the pulseaudio output "device" to foobar2000
@@ -96,14 +92,6 @@ static const GUID guid_cfg_pulseaudio_output            = {0x0fe94df9, 0xc8e2, 0
 // and the actual settings under advanced settings
 static advconfig_branch_factory g_pulseaudio_output_branch(OUTPUT_NAME " output",
     guid_cfg_pulseaudio_branch, advconfig_branch::guid_branch_playback, 0);
-static advconfig_integer_factory cfg_pulseaudio_seek_fade_out("Fade out on seek (msec)",
-    guid_cfg_pulseaudio_fade_out_seek, guid_cfg_pulseaudio_branch, 0, 15, 0, 1000, 0);
-static advconfig_integer_factory cfg_pulseaudio_seek_fade_in("Fade in on seek (msec)",
-    guid_cfg_pulseaudio_fade_in_seek, guid_cfg_pulseaudio_branch, 0, 15, 0, 1000, 0);
-static advconfig_integer_factory cfg_pulseaudio_track_fade_out("Fade out on manual track change (msec)",
-    guid_cfg_pulseaudio_fade_out_track, guid_cfg_pulseaudio_branch, 0, 0, 0, 1000, 0);
-static advconfig_integer_factory cfg_pulseaudio_track_fade_in("Fade in on manual track change (msec)",
-    guid_cfg_pulseaudio_fade_in_track, guid_cfg_pulseaudio_branch, 0, 0, 0, 1000, 0);
 // TODO: what is this
 static advconfig_checkbox_factory cfg_pulseaudio_minreq_workaround("Enable workaround for driver issue",
     guid_cfg_pulseaudio_minreq_workaround, guid_cfg_pulseaudio_branch, 0, false);
@@ -115,12 +103,6 @@ static advconfig_string_factory_MT cfg_pulseaudio_server(OUTPUT_NAME " server",
 
 class output_pulse : public output_v4 {
 public:
-    typedef struct fade_in {
-        bool active = false;
-        size_t total_samples;
-        size_t progress;
-    } fade;
-
     output_pulse(const GUID&, double, bool, t_uint32);
     ~output_pulse();
 
@@ -162,14 +144,6 @@ private:
     bool progressing;
     bool draining;
     bool drained;
-    bool rewind_active;
-    lookback_buffer rewind_buffer;
-    const size_t cfg_seek_fade_in;
-    const size_t cfg_seek_fade_out;
-    const size_t cfg_track_fade_in;
-    const size_t cfg_track_fade_out;
-    size_t fade_in_next_ms;
-    fade active_fade_in;
     bool next_write_relative;
     pfc::event trigger_update;
     service_ptr_t<playback_control> playback_control;
@@ -190,10 +164,6 @@ private:
     static void stream_write_cb(pa_stream*, size_t, void*);
     // writes stuff to pulseaudio stream
     size_t write();
-    // total mystery method
-    void fade_section(audio_sample*, size_t, size_t, size_t, size_t, bool);
-    // writes fadeout to the stream
-    void write_fade_out(size_t);
     // signals something to the pulseaudio mainloop
     static void stream_success_cb(pa_stream*, int, void*);
     // waits until the pulseaudio operation has been completed

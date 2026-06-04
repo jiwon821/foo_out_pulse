@@ -1,5 +1,4 @@
 #include "stdafx.h"
-#include "lookback_buffer.h"
 #include "output_pulseaudio.h"
 
 #include <pathcch.h>
@@ -17,14 +16,6 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
         progressing(false),
         draining(false),
         drained(false),
-        cfg_seek_fade_out(pfc::min_t((size_t)cfg_pulseaudio_seek_fade_out, (size_t)(1000 * p_buffer_length))),
-        cfg_seek_fade_in((size_t)cfg_pulseaudio_seek_fade_in),
-        cfg_track_fade_out(pfc::min_t((size_t)cfg_pulseaudio_track_fade_out, (size_t)(1000 * p_buffer_length))),
-        cfg_track_fade_in((size_t)cfg_pulseaudio_track_fade_in),
-        fade_in_next_ms(0),
-        active_fade_in(),
-        rewind_buffer(),
-        rewind_active(cfg_pulseaudio_seek_fade_out > 0 || cfg_pulseaudio_track_fade_out > 0),
         next_write_relative(false),
         volume(0)
 {
@@ -162,9 +153,9 @@ void output_pulse::flush()
     m_incoming_ptr = 0;
     m_incoming.set_size(0);
 
-    write_fade_out(cfg_seek_fade_out);
-    active_fade_in = fade();
-    fade_in_next_ms = cfg_seek_fade_in;
+    // from write_fade_out in case these are needed
+    next_write_relative = true;
+    trigger_update.set_state(true);
 }
 
 void output_pulse::flush_changing_track()
@@ -172,9 +163,9 @@ void output_pulse::flush_changing_track()
     m_incoming_ptr = 0;
     m_incoming.set_size(0);
 
-    write_fade_out(cfg_track_fade_out);
-    active_fade_in = fade();
-    fade_in_next_ms = cfg_track_fade_in;
+    // from write_fade_out in case these are needed
+    next_write_relative = true;
+    trigger_update.set_state(true);
 }
 
 void output_pulse::update(bool& p_ready)
@@ -297,26 +288,6 @@ void output_pulse::process_samples(const audio_chunk& p_chunk)
     size_t length = p_chunk.get_used_size();
     m_incoming.set_data_fromptr(p_chunk.get_data(), length);
     m_incoming_ptr = 0;
-
-    if (fade_in_next_ms > 0)
-    {
-        active_fade_in = fade();
-        active_fade_in.active = true;
-        active_fade_in.total_samples = m_incoming_spec.time_to_samples(0.001 * fade_in_next_ms);
-        active_fade_in.progress = 0;
-        fade_in_next_ms = 0;
-    }
-
-    if (active_fade_in.active)
-    {
-        size_t fade_samples = pfc::min_t(m_incoming.get_size() / m_incoming_spec.m_channels, (active_fade_in.total_samples - active_fade_in.progress));
-        fade_section(m_incoming.get_ptr(), fade_samples, active_fade_in.total_samples, active_fade_in.progress, m_incoming_spec.m_channels, true);
-        active_fade_in.progress += fade_samples;
-        if (active_fade_in.progress == active_fade_in.total_samples)
-        {
-            active_fade_in.active = false;
-        }
-    }
 }
 
 bool output_pulse::is_progressing()
@@ -554,11 +525,6 @@ size_t output_pulse::write()
             else
             {
                 next_write_relative = false;
-
-                if (rewind_active)
-                {
-                    rewind_buffer.queue(m_incoming.get_ptr() + m_incoming_ptr, delta * sizeof(audio_sample));
-                }
                 m_incoming_ptr += delta;
             }
         }
@@ -588,11 +554,6 @@ size_t output_pulse::write()
             }
             else
             {
-                if (rewind_active)
-                {
-                    rewind_buffer.queue(m_incoming.get_ptr() + m_incoming_ptr, delta * sizeof(audio_sample));
-                }
-
                 m_incoming_ptr += delta;
             }
         }
@@ -601,101 +562,6 @@ size_t output_pulse::write()
         return (cw_samples - delta) / m_incoming_spec.m_channels;
     }
 }
-
-void output_pulse::fade_section(audio_sample* data, size_t num_samples_to_write, size_t total_fade_samples, size_t start_at_sample, size_t num_channels, bool fade_in)
-{
-    if (fade_in)
-    {
-        for (size_t s = 0; s < num_samples_to_write; s++)
-        {
-            audio_math::scale(data + (s * num_channels), num_channels, data + (s * num_channels), (1.0f * (s + start_at_sample)) / (1.0f * total_fade_samples));
-        }
-    }
-    else
-    {
-        for (size_t s = 0; s < num_samples_to_write; s++)
-        {
-            audio_math::scale(data + (s * num_channels), num_channels, data + (s * num_channels), (1.0f * (total_fade_samples - (start_at_sample + s))) / (1.0f * total_fade_samples));
-        }
-    }
-}
-
-void output_pulse::write_fade_out(size_t fade_ms)
-{
-    if (stream == NULL || fade_ms == 0 || !rewind_active)
-    {
-        next_write_relative = true;
-        trigger_update.set_state(true);
-        return;
-    }
-
-    g_pa_threaded_mainloop_lock(mainloop);
-
-    if (g_pa_stream_is_corked(stream))
-    {
-        pa_operation* op = g_pa_stream_flush(stream, NULL, NULL);
-        if (op != NULL)
-        {
-            g_pa_operation_unref(op);
-        }
-
-        g_pa_threaded_mainloop_unlock(mainloop);
-        return;
-    }
-
-    pa_operation* op = g_pa_stream_update_timing_info(stream, stream_success_cb, mainloop);
-    wait_for_op(op);
-
-    const pa_timing_info* timing_info = g_pa_stream_get_timing_info(stream);
-    if (!timing_info)
-    {
-        console::error("Error getting stream timing info");
-        g_pa_threaded_mainloop_unlock(mainloop);
-        return;
-    }
-
-    const pa_buffer_attr* buffer_attr = g_pa_stream_get_buffer_attr(stream);
-    if (!buffer_attr) {
-        console::error("Error getting stream buffer attributes");
-        g_pa_threaded_mainloop_unlock(mainloop);
-        return;
-    }
-
-    int64_t read_index = timing_info->read_index;
-    int64_t write_index = timing_info->write_index;
-
-    int64_t offset_bytes = (int64_t)m_active_spec.time_to_samples(offset) * m_active_spec.m_channels * 4;
-    int64_t buffered_bytes = (buffer_attr->maxlength + write_index - read_index) % buffer_attr->maxlength;
-
-    int64_t rewind_bytes = pfc::max_t(buffered_bytes - offset_bytes, (int64_t)0);
-    rewind_bytes = rewind_buffer.read_back((size_t)rewind_bytes);
-
-    if (rewind_bytes > 0)
-    {
-        std::shared_ptr<uint8_t> rewind_data = rewind_buffer.shared_buffer;
-        int64_t fade_samples = pfc::min_t(rewind_bytes / 4 / m_active_spec.m_channels, (int64_t)m_active_spec.time_to_samples(0.001 * fade_ms) * m_active_spec.m_channels);
-        fade_section((audio_sample*)rewind_data.get(), (size_t)fade_samples, (size_t)fade_samples, 0, m_active_spec.m_channels, false);
-
-        int64_t write_bytes = fade_samples * m_active_spec.m_channels * sizeof(audio_sample);
-        int error = g_pa_stream_write(stream, (audio_sample*)rewind_data.get(), (size_t)write_bytes, NULL, read_index + offset_bytes, PA_SEEK_ABSOLUTE);
-        if (error < 0)
-        {
-            console_error("error writing fade to stream", error);
-        }
-        else
-        {
-            rewind_buffer.queue((audio_sample*)rewind_data.get(), (size_t)write_bytes);
-            pa_operation* op = g_pa_stream_drain(stream, stream_success_cb, mainloop);
-            wait_for_op(op);
-        }
-    }
-    else
-    {
-      next_write_relative = true;
-    }
-
-    g_pa_threaded_mainloop_unlock(mainloop);
-  }
 
 void output_pulse::stream_success_cb(pa_stream* s, int success, void* userdata)
 {
@@ -789,28 +655,7 @@ void output_pulse::open_incoming_spec()
 
     m_active_spec = m_incoming_spec;
 
-    if (rewind_active)
-    {
-        const pa_buffer_attr* received_attr = g_pa_stream_get_buffer_attr(stream);
-        if (!received_attr)
-        {
-            console::error("Error getting stream buffer attributes");
-            rewind_buffer.reset(attr.maxlength);
-        }
-        else
-        {
-            std::stringstream s;
-            s << "Pulseaudio: got buffer attributes: maxlength "
-            << received_attr->maxlength << ", minreq " << received_attr->minreq
-            << ", tlength " << received_attr->tlength << ", prebuf "
-            << received_attr->prebuf;
-            console::info(s.str().c_str());
-            rewind_buffer.reset(received_attr->maxlength);
-        }
-    }
-
     g_pa_threaded_mainloop_unlock(mainloop);
-
     trigger_update.set_state(true);
 }
 
