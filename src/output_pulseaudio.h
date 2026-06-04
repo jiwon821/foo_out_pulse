@@ -8,6 +8,8 @@
 #define OUTPUT_NAME "PulseAudio"
 // and the name of, err, foobar2000
 #define APPLICATION_NAME "foobar2000"
+// name of the libpulse-0.dll to load, without any paths
+#define LIBPULSE_DLL = "libpulse-0.dll"
 
 // external functions from pulseaudio dll
 static pa_bytes_to_usec                     g_pa_bytes_to_usec;
@@ -263,6 +265,9 @@ private:
     static void stream_drained_cb(pa_stream*, int, void*);
     // loads external functions from libpulse-0.dll
     static bool load_pulse_dll();
+
+    // write messages to the console
+    static void console_message(const char*, ...);
 };
 
 // needs to reside where the class definition is
