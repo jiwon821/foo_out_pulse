@@ -118,7 +118,7 @@ public:
     void process_samples(const audio_chunk &);
 
     // whether the audio stream is being played or not, defined in output
-    bool output_pulse::is_progressing()
+    bool is_progressing()
     {
         return progressing;
     }
@@ -223,7 +223,7 @@ private:
     t_samplespec m_incoming_spec, m_active_spec;
 
     // wrapper for connecting the pulseaudio context, returns true on success
-    bool context_connect(pa_threaded_mainloop *, pa_context *, const char *, );
+    bool context_connect();
 
     // our pulseaudio context
     pa_context *context;
