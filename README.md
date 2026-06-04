@@ -2,26 +2,6 @@
 
 Native event-based PulseAudio output for foobar2000, for use in Wine.
 
-## Building
-
-These steps were performed on Windows 11 in June 2026. Your mileage may vary.
-
-1. Download and install Visual Studio Community. You can download Visual Studio bootstrappers from [here](https://learn.microsoft.com/en-us/visualstudio/install/create-a-network-installation-of-visual-studio?view=visualstudio#download-the-visual-studio-bootstrapper-to-create-the-layout), or directly from [this link](https://aka.ms/vs/stable/vs_community.exe).
-
-2. Under component selection, install the "Desktop development with C++" bundle under "Workloads -> Desktop & Mobile".
-
-3. Grab SDK version 2022-08-10 from the [foobar2000 Software Development Kit page](https://www.foobar2000.org/SDK) and extract it to `SDK-2022-08-10`. This is the last SDK version that includes `struct t_samplespec` which this component requires.
-
-4. Grab Windows Template Library (WTL) from [SourceForge.net](https://sourceforge.net/projects/wtl/) (WTL10_01_Release.zip at the time of writing) and extract it to `WTL10_01_Release`.
-
-5. Open solution `src\foo_out_pulse.sln` in Visual Studio. It might ask you to upgrade the platform toolset from something to something. Do that, or install the appropriate platform toolset. I just retargeted everything to a new toolset.
-
-6. Ensure that `foobar2000_component_client`, `foobar2000_SDK`, `foobar2000_sdk_helpers`, `libPPUI` and `pfc` projects are dependencies of the project `foo_out_pulse` (Solution 'foo_out_pulse' -> Properties -> Project Build Dependencies).
-
-7. Check that `$(SolutionDir)..\WTL10_01_Release\Include` is in the include path of the projects `foobar2000_sdk_helpers` and `libPPUI` (see https://hydrogenaudio.org/index.php/topic,119757.0.html) (Project Properties -> Configuration Properties -> C/C++ -> General -> Additional Include Directories).
-
-8. Build the solution. Only `Release|Win32` is tested for now.
-
 ## Usage
 
 This repository does not contain the required PulseAudio libraries. For now, you will need to either get pre-compiled libraries for Windows (from e.g. [this repository](https://github.com/pgaskin/pulseaudio-win32)) or compile PulseAudio for Windows yourself, which I have not successfully done. After you have the required libraries, place them under the `components/pulse` directory in the foobar2000 installation path.
@@ -66,6 +46,26 @@ You might also want to symlink the PulseAudio cookie into your Wine prefix:
 If you don't symlink the cookie, it seems to get copied automatically by something. I have no idea why that happens.
 
 For the icon to appear in the mixer, you will need to place a png of foobar's icon named `foobar` in, for example, `~/.icons/hicolor/256x256/apps/foobar.png`
+
+## Building
+
+These steps were performed on Windows 11 in June 2026. Your mileage may vary.
+
+1. Download and install Visual Studio Community. You can download Visual Studio bootstrappers from [here](https://learn.microsoft.com/en-us/visualstudio/install/create-a-network-installation-of-visual-studio?view=visualstudio#download-the-visual-studio-bootstrapper-to-create-the-layout), or directly from [this link](https://aka.ms/vs/stable/vs_community.exe).
+
+2. Under component selection, install the "Desktop development with C++" bundle under "Workloads -> Desktop & Mobile".
+
+3. Grab SDK version 2022-08-10 from the [foobar2000 Software Development Kit page](https://www.foobar2000.org/SDK) and extract it to `SDK-2022-08-10`. This is the last SDK version that includes `struct t_samplespec` which this component requires.
+
+4. Grab Windows Template Library (WTL) from [SourceForge.net](https://sourceforge.net/projects/wtl/) (WTL10_01_Release.zip at the time of writing) and extract it to `WTL10_01_Release`.
+
+5. Open solution `src\foo_out_pulse.sln` in Visual Studio. It might ask you to upgrade the platform toolset from something to something. Do that, or install the appropriate platform toolset. I just retargeted everything to a new toolset.
+
+6. Ensure that `foobar2000_component_client`, `foobar2000_SDK`, `foobar2000_sdk_helpers`, `libPPUI` and `pfc` projects are dependencies of the project `foo_out_pulse` (Solution 'foo_out_pulse' -> Properties -> Project Build Dependencies).
+
+7. Check that `$(SolutionDir)..\WTL10_01_Release\Include` is in the include path of the projects `foobar2000_sdk_helpers` and `libPPUI` (see https://hydrogenaudio.org/index.php/topic,119757.0.html) (Project Properties -> Configuration Properties -> C/C++ -> General -> Additional Include Directories).
+
+8. Build the solution. Only `Release|Win32` is tested for now.
 
 ## Known bugs
 
