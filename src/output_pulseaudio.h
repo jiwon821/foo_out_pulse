@@ -114,8 +114,8 @@ public:
     size_t update_v2();
     void force_play();
 
-    void process_samples(const audio_chunk&);
-    pfc::eventHandle_t get_trigger_event();
+    // process incoming audio samples from the audio chunk
+    void process_samples(const audio_chunk &);
 
     // whether the audio stream is being played or not, defined in output
     bool output_pulse::is_progressing()
@@ -130,7 +130,7 @@ public:
     void pause(bool);
 
     // called by enum_devices() in output
-    static void g_enum_devices(output_device_enum_callback&);
+    static void g_enum_devices(output_device_enum_callback &);
 
     // called by get_guid() in output
     static GUID g_get_guid()
