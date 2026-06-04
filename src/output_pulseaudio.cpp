@@ -329,7 +329,7 @@ double output_pulse::get_latency()
             g_pa_threaded_mainloop_unlock(mainloop);
             if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
             {
-                latency_sec += (latency_msec * 0.000001);
+                latency_sec += (latency_usec * 0.000001);
             }
             else
             {
