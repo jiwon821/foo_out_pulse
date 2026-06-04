@@ -107,7 +107,6 @@ public:
     output_pulse(const GUID&, double, bool, t_uint32);
     ~output_pulse();
 
-    void pause(bool);
     void volume_set(double);
     void flush();
     void flush_changing_track();
@@ -119,6 +118,9 @@ public:
     void process_samples(const audio_chunk&);
     bool is_progressing();
     pfc::eventHandle_t get_trigger_event();
+
+    // pauses (true) or resumes (false) the stream depending on the parameter
+    void pause(bool);
 
     // called by enum_devices() in output
     static void g_enum_devices(output_device_enum_callback&);

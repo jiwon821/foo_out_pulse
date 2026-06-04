@@ -108,19 +108,21 @@ output_pulse::~output_pulse()
 
 void output_pulse::pause(bool p_state)
 {
-    if (!stream)
-    {
-        return;
-    }
+    pa_operation *operation;
 
-    g_pa_threaded_mainloop_lock(mainloop);
-    pa_operation* op = g_pa_stream_cork(stream, p_state ? 1 : 0, NULL, NULL);
-    if (op)
+    if (stream)
     {
-      g_pa_operation_unref(op);
+        g_pa_threaded_mainloop_lock(mainloop);
+
+        // cork means pause in pulseaudio https://freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#a14e698233ac2d246646651955ab0ec7b
+        if (operation = g_pa_stream_cork(stream, p_state, NULL, NULL))
+        {
+            g_pa_operation_unref(operation);
+        }
+
+        g_pa_threaded_mainloop_unlock(mainloop);
     }
-    g_pa_threaded_mainloop_unlock(mainloop);
-  }
+}
 
 void output_pulse::volume_set(double p_val)
 {
@@ -368,8 +370,6 @@ void output_pulse::context_state_cb(pa_context* ctx, void* userdata)
     case PA_CONTEXT_READY:
     case PA_CONTEXT_TERMINATED:
         g_pa_threaded_mainloop_signal(output->mainloop, 0);
-    default:
-        break;
     }
 }
 
