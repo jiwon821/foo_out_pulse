@@ -60,7 +60,7 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
     if (proplist)
     {
         g_pa_proplist_free(proplist);
-    ]
+    }
 
     g_pa_context_set_state_callback(context, context_state_cb, this);
 
