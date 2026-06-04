@@ -228,7 +228,6 @@ copy "$(TargetPath)" "%TARGET_DIR%"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="lookback_buffer.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="output_pulseaudio.cpp" />
     <ClCompile Include="stdafx.cpp">
@@ -239,7 +238,6 @@ copy "$(TargetPath)" "%TARGET_DIR%"</Command>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="lookback_buffer.h" />
     <ClInclude Include="output_pulseaudio.h" />
     <ClInclude Include="pulse.h" />
     <ClInclude Include="stdafx.h" />
