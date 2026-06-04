@@ -101,7 +101,8 @@ static advconfig_integer_factory cfg_pulseaudio_prebuf("Request prebuffer (milli
 static advconfig_string_factory_MT cfg_pulseaudio_server(OUTPUT_NAME " server",
     guid_cfg_pulseaudio_server, guid_cfg_pulseaudio_branch, 0, "tcp4:127.0.0.1");
 
-class output_pulse : public output_v4 {
+class output_pulse : public output_v4
+{
 public:
     output_pulse(const GUID&, double, bool, t_uint32);
     ~output_pulse();
@@ -118,18 +119,73 @@ public:
     void process_samples(const audio_chunk&);
     bool is_progressing();
     pfc::eventHandle_t get_trigger_event();
+
+    // called by enum_devices() in output
     static void g_enum_devices(output_device_enum_callback&);
 
-    static bool g_advanced_settings_query();
-    static bool g_needs_bitdepth_config();
-    static bool g_needs_dither_config();
-    static bool g_needs_device_list_prefixes();
-    static bool g_supports_multiple_streams();
-    static bool g_is_high_latency();
-    static uint32_t g_extra_flags();
-    static void g_advanced_settings_popup(HWND, POINT);
-    static const char* g_get_name();
-    static GUID g_get_guid();
+    // called by get_guid() in output
+    static GUID g_get_guid()
+    {
+        // TODO: check where to define this
+        return guid_cfg_pulseaudio_output;
+    }
+
+    // called by get_name() in output
+    static const char* g_get_name()
+    {
+        // just return our name
+        // TODO: check definition along with guid above
+        return OUTPUT_NAME;
+    }
+
+    // called by advanced_settings_popup(HWND, POINT) in output
+    static void g_advanced_settings_popup(HWND, POINT)
+    {
+        // nothing to see here
+    }
+
+    // these ones are called by get_config_flags() in output
+    static bool g_advanced_settings_query()
+    {
+        // this component does not need advanced configuration
+        return false;
+    }
+
+    static bool g_needs_bitdepth_config()
+    {
+        // neither do we need bitdepth configuration, but why is that
+        return false;
+    }
+
+    static bool g_needs_dither_config()
+    {
+        // no need for dither configuration
+        return false;
+    }
+
+    static bool g_needs_device_list_prefixes()
+    {
+        // these we do need for some reason
+        return true;
+    }
+
+    static bool g_supports_multiple_streams()
+    {
+        // no support for multiple streams
+        return false;
+    }
+
+    static bool g_is_high_latency()
+    {
+        // we are high latency, I guess we are not low latency either
+        return true;
+    }
+
+    static uint32_t g_extra_flags()
+    {
+        // no extra flags
+        return 0;
+    }
 
 private:
     const double offset = 0.05;
