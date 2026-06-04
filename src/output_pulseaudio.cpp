@@ -300,68 +300,6 @@ pfc::eventHandle_t output_pulse::get_trigger_event()
     return trigger_update.get_handle();
 }
 
-void output_pulse::g_enum_devices(output_device_enum_callback& p_callback)
-{
-    pfc::string8 pulseaudio_server_string;
-
-    // run the callback if the pulseaudio libraries are or have been loaded successfully
-    if (load_pulse_dll())
-    {
-        cfg_pulseaudio_server.get(pulseaudio_server_string);
-        p_callback.on_device(guid_cfg_pulseaudio_device, pulseaudio_server_string, 9);
-    }
-}
-
-bool output_pulse::g_advanced_settings_query()
-{
-    return false;
-}
-
-bool output_pulse::g_needs_bitdepth_config()
-{
-    return false;
-}
-
-bool output_pulse::g_needs_dither_config()
-{
-    return false;
-}
-
-bool output_pulse::g_needs_device_list_prefixes()
-{
-    return true;
-}
-
-bool output_pulse::g_supports_multiple_streams()
-{
-    return false;
-}
-
-bool output_pulse::g_is_high_latency()
-{
-    return true;
-}
-
-uint32_t output_pulse::g_extra_flags()
-{
-    return 0;
-}
-
-void output_pulse::g_advanced_settings_popup(HWND p_parent, POINT p_menupoint)
-{
-    // no-op
-}
-
-const char* output_pulse::g_get_name()
-{
-    return OUTPUT_NAME;
-}
-
-GUID output_pulse::g_get_guid()
-{
-    return guid_cfg_pulseaudio_output;
-}
-
 bool output_pulse::context_wait(pa_context* ctx, pa_threaded_mainloop* ml)
 {
     pa_context_state_t state;
@@ -784,4 +722,17 @@ bool output_pulse::load_pulse_dll()
     g_pa_is_loaded = true;
     console::info("Successfully loaded libpulse-0.dll");
     return true;
+}
+
+void output_pulse::g_enum_devices(output_device_enum_callback& p_callback)
+{
+    // dunno how the name change is handled, but as tcp4:127.0.0.1 is my only ever use case under wine I don't really care
+    pfc::string8 pulseaudio_server_string;
+
+    // run the callback if the pulseaudio libraries are or have been loaded successfully
+    if (load_pulse_dll())
+    {
+        cfg_pulseaudio_server.get(pulseaudio_server_string);
+        p_callback.on_device(guid_cfg_pulseaudio_device, pulseaudio_server_string, 9);
+    }
 }
