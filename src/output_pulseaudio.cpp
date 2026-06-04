@@ -12,13 +12,15 @@
 
 output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_dither, t_uint32 p_bitdepth)
       : buffer_length(p_buffer_length),
-        m_incoming_ptr(0),
-        progressing(false),
-        draining(false),
-        drained(false),
         next_write_relative(false),
         volume(0)
 {
+    stream = NULL;
+    progressing = false;
+    draining = false;
+    drained = false;
+    m_incoming_ptr = 0;
+
     pfc::string8 pulseaudio_server_string;
     std::stringstream connection_info;
 
@@ -196,31 +198,36 @@ size_t output_pulse::update_v2()
     size_t retCanWriteSamples = 0;
     if (m_incoming_spec == m_active_spec && m_incoming_ptr < m_incoming.get_size())
     {
-      retCanWriteSamples = write();
+        retCanWriteSamples = write();
     }
     else if (m_incoming_ptr == m_incoming.get_size())
     {
-      retCanWriteSamples = SIZE_MAX;
+        retCanWriteSamples = SIZE_MAX;
     }
     return retCanWriteSamples;
 }
 
 void output_pulse::force_play()
 {
+    pa_operation *operation;
+
     if (draining)
     {
+        // only one drain operation per stream may be issued at a time: https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#a8d263f188073f244b3820f3f50db4ba5
         return;
     }
 
     if (stream)
     {
         g_pa_threaded_mainloop_lock(mainloop);
+
         draining = true;
         drained = false;
-        pa_operation* op = g_pa_stream_drain(stream, stream_drained_cb, this);
-        if (op)
+
+        // drain the stream, notify after all audio has been played and playback buffer is empty
+        if (operation = g_pa_stream_drain(stream, stream_drained_cb, this))
         {
-            g_pa_operation_unref(op);
+            g_pa_operation_unref(operation);
         }
         else
         {
@@ -228,15 +235,18 @@ void output_pulse::force_play()
             draining = false;
             drained = true;
         }
-        op = g_pa_stream_trigger(stream, NULL, NULL);
-        if (op)
+
+        // immediately start playback on the stream: https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#ae17a3a9f6ee0403c4665f6f4ce02ca3c
+        if (operation = g_pa_stream_trigger(stream, NULL, NULL))
         {
-            g_pa_operation_unref(op);
+            g_pa_operation_unref(operation);
         }
+
         g_pa_threaded_mainloop_unlock(mainloop);
     }
     else
     {
+        // no stream, so supposedly we must be drained
         draining = false;
         drained = true;
     }
@@ -244,35 +254,61 @@ void output_pulse::force_play()
 
 double output_pulse::get_latency()
 {
-    double ret = 0;
+    double latency_sec = 0;
+    size_t samples;
+    pa_usec_t latency_usec;
+    const pa_timing_info *timing_info;
+    pa_operation *operation;
+
     if (m_incoming_spec.is_valid())
     {
-        ret += audio_math::samples_to_time((m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.m_channels, m_incoming_spec.m_sample_rate);
+        // whatever is left in the m_incoming array, divided then by the number of channels
+        samples = m_incoming.get_size() - m_incoming_ptr;
+        latency_sec += audio_math::samples_to_time(samples / m_incoming_spec.m_channels, m_incoming_spec.m_sample_rate);
     }
-    if (m_active_spec.is_valid() && !drained)
+
+    // get the latency for the currently active spec if the stream has not been drained
+    if (m_active_spec.is_valid() && stream && !drained)
     {
-        if (stream)
+        if (!(timing_info = g_pa_stream_get_timing_info(stream)))
         {
-            pa_usec_t latency;
-            const pa_timing_info* timing_info = g_pa_stream_get_timing_info(stream);
-            if (g_pa_stream_get_latency(stream, &latency, NULL) > -1)
+            // timing info received for the first time, log that for now: https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#a090147751441a97e04a4acef1d6514cb
+            console::info("Received initial timing information");
+        }
+
+        // returns negative on error, 0 on success: https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#aa521efcc16fe2abf0f8461462432ac16
+        if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
+        {
+            latency_sec += (latency_usec * 0.000001);
+        }
+        else
+        {
+            // need to update timing information
+            console::info("Updating timing information");
+            g_pa_threaded_mainloop_lock(mainloop);
+
+            if (operation = g_pa_stream_update_timing_info(stream, stream_success_cb, mainloop))
             {
-                ret += (latency * 0.000001);
+                while (g_pa_operation_get_state(operation) == PA_OPERATION_RUNNING)
+                {
+                    g_pa_threaded_mainloop_wait(mainloop);
+                }
+                g_pa_operation_unref(operation);
+            }
+
+            g_pa_threaded_mainloop_unlock(mainloop);
+            if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
+            {
+                latency_sec += (latency_msec * 0.000001);
             }
             else
             {
-                g_pa_threaded_mainloop_lock(mainloop);
-                pa_operation* op = g_pa_stream_update_timing_info(stream, stream_success_cb, mainloop);
-                wait_for_op(op);
-                g_pa_threaded_mainloop_unlock(mainloop);
-                if (g_pa_stream_get_latency(stream, &latency, NULL) > -1)
-                {
-                    ret += (latency * 0.000001);
-                }
+                console::error("pa_stream_get_latency returned error after timing information update");
             }
         }
     }
-    return ret;
+
+    return latency_sec;
 }
 
 void output_pulse::process_samples(const audio_chunk& p_chunk)
@@ -350,14 +386,6 @@ void output_pulse::sink_input_info_cb(pa_context* c, const pa_sink_input_info* i
     }
 }
 
-void output_pulse::stop()
-{
-    fb2k::inMainThread([]()
-    {
-        playback_control::get()->stop();
-    });
-}
-
 void output_pulse::context_state_cb(pa_context* ctx, void* userdata)
 {
     output_pulse* output = (output_pulse*)userdata;
@@ -419,7 +447,6 @@ void output_pulse::stream_write_cb(pa_stream* s, size_t nbytes, void* userdata)
     output_pulse* output = (output_pulse*)userdata;
     output->trigger_update.set_state(true);
 }
-
 
 size_t output_pulse::write()
 {
@@ -503,18 +530,8 @@ size_t output_pulse::write()
 
 void output_pulse::stream_success_cb(pa_stream* s, int success, void* userdata)
 {
+    // signal all waiting threads: https://www.freedesktop.org/software/pulseaudio/doxygen/thread-mainloop_8h.html#ad253b70911af81c04417793841a15766
     g_pa_threaded_mainloop_signal((pa_threaded_mainloop*)userdata, 0);
-}
-
-void output_pulse::wait_for_op(pa_operation* op)
-{
-    if (op) {
-        while (g_pa_operation_get_state(op) == PA_OPERATION_RUNNING)
-        {
-            g_pa_threaded_mainloop_wait(mainloop);
-        }
-        g_pa_operation_unref(op);
-    }
 }
 
 void output_pulse::close_stream()
