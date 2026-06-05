@@ -600,7 +600,6 @@ bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr
 
 void output_pulse::open_incoming_spec()
 {
-    const char* s_err;
     pa_sample_spec ss;
     pa_buffer_attr attr;
 

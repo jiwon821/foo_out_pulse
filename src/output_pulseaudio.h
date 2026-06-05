@@ -1,7 +1,5 @@
 #pragma once
 #include "stdafx.h"
-#include "pulse.h"
-
 #include <sstream>
 
 // name of our output, whereever that might come in handy
