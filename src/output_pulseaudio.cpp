@@ -1,15 +1,6 @@
 #include "stdafx.h"
 #include "output_pulseaudio.h"
 
-#include <pathcch.h>
-#include <windows.h>
-
-#include <mutex>
-#include <sstream>
-
-#include "core_api.h"
-#include "output.h"
-
 output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_dither, t_uint32 p_bitdepth)
       : buffer_length(p_buffer_length),
         next_write_relative(false),
@@ -187,20 +178,14 @@ void output_pulse::flush()
     m_incoming_ptr = 0;
     m_incoming.set_size(0);
 
-    // from write_fade_out in case these are needed
+    // apparently at least next_write_relative is needed here
+    // well, of course it is, since it marks if we are seeking or not and flush() is called after seeking
     next_write_relative = true;
     trigger_update.set_state(true);
 }
 
-void output_pulse::flush_changing_track()
-{
-    m_incoming_ptr = 0;
-    m_incoming.set_size(0);
-
-    // from write_fade_out in case these are needed
-    next_write_relative = true;
-    trigger_update.set_state(true);
-}
+// it just calls flush() in output.h
+//void output_pulse::flush_changing_track()
 
 void output_pulse::update(bool& p_ready)
 {
@@ -292,7 +277,7 @@ double output_pulse::get_latency()
 
     if (m_incoming_spec.is_valid())
     {
-        // whatever is left in the m_incoming array, divided then by the number of channels
+        // whatever is left in the m_i ncoming array, divided then by the number of channels
         samples = m_incoming.get_size() - m_incoming_ptr;
         latency_sec += audio_math::samples_to_time(samples / m_incoming_spec.m_channels, m_incoming_spec.m_sample_rate);
     }
@@ -341,25 +326,7 @@ double output_pulse::get_latency()
     return latency_sec;
 }
 
-void output_pulse::process_samples(const audio_chunk &p_chunk)
-{
-    t_samplespec spec;
 
-    // I dunno why we check for exactly this, maybe because we need to have processed all samples
-    pfc::dynamic_assert(m_incoming_ptr == m_incoming.get_size());
-
-    spec.fromchunk(p_chunk);
-    if (spec.is_valid())
-    {
-        m_incoming.set_data_fromptr(p_chunk.get_data(), p_chunk.get_used_size());
-        m_incoming_ptr = 0;
-        m_incoming_spec = spec;
-    }
-    else
-    {
-        pfc::throw_exception_with_message<exception_io_data>("Invalid audio stream specifications");
-    }
-}
 
 void output_pulse::context_subscribe_cb(pa_context* c, pa_subscription_event_type_t t, uint32_t idx, void* userdata)
 {
@@ -423,12 +390,6 @@ void output_pulse::stream_state_cb(pa_stream* s, void* userdata)
     }
 }
 
-void output_pulse::stream_started_cb(pa_stream* s, void* userdata)
-{
-    output_pulse* o = (output_pulse*)userdata;
-    o->progressing = true;
-}
-
 void output_pulse::stream_underflow_cb(pa_stream* s, void* userdata)
 {
     output_pulse* o = (output_pulse*)userdata;
@@ -436,79 +397,98 @@ void output_pulse::stream_underflow_cb(pa_stream* s, void* userdata)
     o->trigger_update.set_state(true);
 }
 
-void output_pulse::stream_write_cb(pa_stream* s, size_t nbytes, void* userdata)
-{
-    output_pulse* o = (output_pulse*)userdata;
-    o->trigger_update.set_state(true);
-}
-
 size_t output_pulse::write()
 {
+    const pa_timing_info* timing_info;
+    const pa_buffer_attr* buffer_attr;
+    int64_t write_index;
+    size_t cw_samples, delta;
+    int err;
+    // the number of bytes requested by the server that have not yet been written
+    size_t requested_bytes;
+
     if (!stream || m_incoming_spec != m_active_spec) {
       return 0;
     }
 
+    // lockity lock
     g_pa_threaded_mainloop_lock(mainloop);
 
+    // if we are seeking...
     if (next_write_relative) {
-        const pa_timing_info* info = g_pa_stream_get_timing_info(stream);
-        if (!info)
+        // need this to get the "current read index into the playback buffer in bytes": https://www.freedesktop.org/software/pulseaudio/doxygen/structpa__timing__info.html#a5e04baf968cc1d53a7795a58b2e4f788
+        if (!(timing_info = g_pa_stream_get_timing_info(stream)))
         {
             console_error("pa_stream_get_timing_info");
             g_pa_threaded_mainloop_unlock(mainloop);
             return 0;
         }
 
-        int64_t write_index = info->read_index - (info->read_index % (4 * m_active_spec.m_channels));
-
-        const pa_buffer_attr* buffer_attr = g_pa_stream_get_buffer_attr(stream);
-        if (!buffer_attr)
+        // "Return the per-stream server-side buffer metrics of the stream": https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#a9a3c3e78eafb28cce3a16cef2b68a385 
+        if (!(buffer_attr = g_pa_stream_get_buffer_attr(stream)))
         {
             console_error("pa_stream_get_buffer_attr");
             g_pa_threaded_mainloop_unlock(mainloop);
             return 0;
         }
 
-        size_t cw_samples = buffer_attr->tlength / sizeof(audio_sample);
-        size_t delta = pfc::min_t(m_incoming.get_size() - m_incoming_ptr, cw_samples);
+        // calculate our "write index". I wonder what the magic number 4 is. at least it's sizeof(audio_sample)
+        // see also open_incoming_spec() for the magic number 4
+        write_index = timing_info->read_index - (timing_info->read_index % (4 * m_active_spec.m_channels));
+        // sample count? is the "target length of the buffer" divided by the size of audio sample. makes sense
+        cw_samples = buffer_attr->tlength / sizeof(audio_sample);
+        // delta is the minimum of remaining buffer and audio samples
+        delta = pfc::min_t(m_incoming.get_size() - m_incoming_ptr, cw_samples);
+
+        // thus, if we are not at the end and we have samples, we should write them
         if (delta > 0)
         {
-            int error = g_pa_stream_write(stream, m_incoming.get_ptr() + m_incoming_ptr,
-            delta * sizeof(audio_sample), NULL, write_index, PA_SEEK_ABSOLUTE);
-            if (error < 0)
+            // right, so this differs with the other case by having seek mode set to absolute: https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#a4fc69dec0cc202fcc174125dc88dada7
+            // so we write to our stream at the pointer position the size of our data, and absolute seek at the write index
+            err = g_pa_stream_write(stream, m_incoming.get_ptr() + m_incoming_ptr, delta * sizeof(audio_sample), NULL, write_index, PA_SEEK_ABSOLUTE);
+            if (err)
             {
-                console_error("pa_stream_write", error);
+                pa_console_error("pa_stream_write", err);
                 g_pa_threaded_mainloop_unlock(mainloop);
+                // and returns the remaining sample count without channel information
                 return (cw_samples - delta) / m_incoming_spec.m_channels;
             }
             else
             {
+                // on success we put our next write to non_relative and advance our pointer by how many samples we have written
                 next_write_relative = false;
                 m_incoming_ptr += delta;
             }
         }
 
         g_pa_threaded_mainloop_unlock(mainloop);
+
+        // and we return the same stuff
         return (cw_samples - delta) / m_incoming_spec.m_channels;
     }
     else
     {
-        size_t cw_samples = g_pa_stream_writable_size(stream) / sizeof(audio_sample);
-        if (cw_samples == (size_t)-1)
+        // "Return the number of bytes requested by the server that have not yet been written.": https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#a8927ec9a2876cf258cf1ffdb154b0362
+        if ((requested_bytes = g_pa_stream_writable_size(stream)) == (size_t)-1)
         {
-            console_error("pa_stream_writable_size", g_pa_context_errno(context));
+            console_error("pa_stream_writable_size");
             return 0;
         }
 
-        size_t delta = pfc::min_t(m_incoming.get_size() - m_incoming_ptr, cw_samples);
+        // here our sample count is the number of bytes divided by sample size
+        cw_samples = requested_bytes / sizeof(audio_sample);
+        // and our delta is the same
+        delta = pfc::min_t(m_incoming.get_size() - m_incoming_ptr, cw_samples);
 
         if (delta > 0)
         {
-            int error = g_pa_stream_write(stream, m_incoming.get_ptr() + m_incoming_ptr, delta * sizeof(audio_sample), NULL, 0, PA_SEEK_RELATIVE);
-            if (error < 0)
+            // fairly similar, except write at seek offset 0 with relative seek mode
+            err = g_pa_stream_write(stream, m_incoming.get_ptr() + m_incoming_ptr, delta * sizeof(audio_sample), NULL, 0, PA_SEEK_RELATIVE);
+            if (err < 0)
             {
-                console_error("g_pa_stream_write", error);
+                pa_console_error("g_pa_stream_write", err);
                 g_pa_threaded_mainloop_unlock(mainloop);
+                // returning 0 here means we are not yet ready to receive any data
                 return 0;
             }
             else
@@ -522,12 +502,6 @@ size_t output_pulse::write()
     }
 }
 
-void output_pulse::stream_success_cb(pa_stream* s, int success, void* userdata)
-{
-    // signal all waiting threads: https://www.freedesktop.org/software/pulseaudio/doxygen/thread-mainloop_8h.html#ad253b70911af81c04417793841a15766
-    pa_threaded_mainloop* m = (pa_threaded_mainloop*)userdata;
-    g_pa_threaded_mainloop_signal(m, 0);
-}
 
 void output_pulse::stream_drained_cb(pa_stream* s, int success, void* userdata)
 {
@@ -615,7 +589,7 @@ void output_pulse::open_incoming_spec()
     ss.format = PA_SAMPLE_FLOAT32LE;
 
     // maximum length of the buffer in bytes
-    // TODO: ceil needed?
+    // TODO: ceil needed? why times four? offset is 0.05, why?
     attr.maxlength = (uint32_t)ceil(m_incoming_spec.time_to_samples(buffer_length + offset) * m_incoming_spec.m_channels * 4);
     // playback only: "recommended to set this to (uint32_t) -1, which will initialize this to a value that is deemed sensible by the server
     // dunno why attr.maxlength was used before
@@ -810,12 +784,26 @@ bool output_pulse::load_pulse_dll()
 void output_pulse::g_enum_devices(output_device_enum_callback& p_callback)
 {
     // dunno how the name change is handled, but as tcp4:127.0.0.1 is my only ever use case under wine I don't really care
+    // get the server string from advanced settings
     pfc::string8 pulseaudio_server_string;
+    cfg_pulseaudio_server.get(pulseaudio_server_string);
 
     // run the callback if the pulseaudio libraries are or have been loaded successfully
     if (load_pulse_dll())
     {
-        cfg_pulseaudio_server.get(pulseaudio_server_string);
         p_callback.on_device(guid_cfg_pulseaudio_device, pulseaudio_server_string, 9);
     }
+}
+
+// okay, this was literally just output_impl::process_samples(const audio_chunk & p_chunk) in the SDK with fade in/out additions
+// TODO: I wonder if we need to even defined this as it's identical, but no time to check now
+void output_pulse::process_samples(const audio_chunk& p_chunk) {
+    pfc::dynamic_assert(m_incoming_ptr == m_incoming.get_size());
+    t_samplespec spec;
+    spec.fromchunk(p_chunk);
+    if (!spec.is_valid()) pfc::throw_exception_with_message< exception_io_data >("Invalid audio stream specifications");
+    m_incoming_spec = spec;
+    t_size length = p_chunk.get_used_size();
+    m_incoming.set_data_fromptr(p_chunk.get_data(), length);
+    m_incoming_ptr = 0;
 }
