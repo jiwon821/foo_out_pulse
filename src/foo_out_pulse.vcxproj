@@ -184,7 +184,8 @@ copy "$(TargetPath)" "%TARGET_DIR%"</Command>
     <PostBuildEvent>
       <Command>set TARGET_DIR="$(SolutionDir)..\foobar2000-$(Platform)\components"
 if not exist "%TARGET_DIR%" mkdir "%TARGET_DIR%"
-copy "$(TargetPath)" "%TARGET_DIR%"</Command>
+copy "$(TargetPath)" "%TARGET_DIR%"
+copy "$(TargetPath)" "Z:"</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>Copying dll</Message>
@@ -239,6 +240,7 @@ copy "$(TargetPath)" "%TARGET_DIR%"</Command>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="output_pulseaudio.h" />
+    <ClInclude Include="pulseaudio.h" />
     <ClInclude Include="stdafx.h" />
   </ItemGroup>
   <ItemGroup>
