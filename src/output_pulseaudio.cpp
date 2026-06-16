@@ -434,7 +434,7 @@ size_t output_pulse::write()
 
         // calculate our "write index". I wonder what the magic number 4 is. at least it's sizeof(audio_sample)
         // see also open_incoming_spec() for the magic number 4
-        write_index = timing_info->read_index - (timing_info->read_index % (4 * m_active_spec.m_channels));
+        write_index = timing_info->read_index - (timing_info->read_index % (sizeof(audio_sample) * m_active_spec.m_channels));
         // sample count? is the "target length of the buffer" divided by the size of audio sample. makes sense
         cw_samples = buffer_attr->tlength / sizeof(audio_sample);
         // delta is the minimum of remaining buffer and audio samples
@@ -589,8 +589,9 @@ void output_pulse::open_incoming_spec()
     ss.format = PA_SAMPLE_FLOAT32LE;
 
     // maximum length of the buffer in bytes
-    // TODO: ceil needed? why times four? offset is 0.05, why?
-    attr.maxlength = (uint32_t)ceil(m_incoming_spec.time_to_samples(buffer_length + offset) * m_incoming_spec.m_channels * 4);
+    // TODO: ceil needed? why times four? offset is 0.05, why? audio_sample is typedef to float, so uhh, replace the * 4 with that
+    //attr.maxlength = (uint32_t)ceil(m_incoming_spec.time_to_samples(buffer_length + offset) * m_incoming_spec.m_channels * sizeof(audio_sample));
+    attr.maxlength = (uint32_t)ceil(m_incoming_spec.time_to_samples(buffer_length) * m_incoming_spec.m_channels * sizeof(audio_sample));
     // playback only: "recommended to set this to (uint32_t) -1, which will initialize this to a value that is deemed sensible by the server
     // dunno why attr.maxlength was used before
     attr.tlength = (uint32_t)-1;
