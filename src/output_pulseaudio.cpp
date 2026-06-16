@@ -160,8 +160,8 @@ void output_pulse::volume_set(double p_val)
     uint32_t index = g_pa_stream_get_index(stream);
     pa_cvolume cvolume;
     g_pa_cvolume_init(&cvolume);
-    cvolume.channels = m_active_spec.m_channels;
-    g_pa_cvolume_set(&cvolume, m_active_spec.m_channels, volume);
+    cvolume.channels = m_active_spec.chanCount;
+    g_pa_cvolume_set(&cvolume, m_active_spec.chanCount, volume);
 
     g_pa_threaded_mainloop_lock(mainloop);
     pa_operation* op = g_pa_context_set_sink_input_volume(context, index, &cvolume, NULL, NULL);
@@ -279,7 +279,7 @@ double output_pulse::get_latency()
     {
         // whatever is left in the m_i ncoming array, divided then by the number of channels
         samples = m_incoming.get_size() - m_incoming_ptr;
-        latency_sec += audio_math::samples_to_time(samples / m_incoming_spec.m_channels, m_incoming_spec.m_sample_rate);
+        latency_sec += audio_math::samples_to_time(samples / m_incoming_spec.chanCount, m_incoming_spec.sampleRate);
     }
 
     // get the latency for the currently active spec if the stream has not been drained
@@ -434,7 +434,7 @@ size_t output_pulse::write()
 
         // calculate our "write index". I wonder what the magic number 4 is. at least it's sizeof(audio_sample)
         // see also open_incoming_spec() for the magic number 4
-        write_index = timing_info->read_index - (timing_info->read_index % (sizeof(audio_sample) * m_active_spec.m_channels));
+        write_index = timing_info->read_index - (timing_info->read_index % (sizeof(audio_sample) * m_active_spec.chanCount));
         // sample count? is the "target length of the buffer" divided by the size of audio sample. makes sense
         cw_samples = buffer_attr->tlength / sizeof(audio_sample);
         // delta is the minimum of remaining buffer and audio samples
@@ -451,7 +451,7 @@ size_t output_pulse::write()
                 pa_console_error("pa_stream_write", err);
                 g_pa_threaded_mainloop_unlock(mainloop);
                 // and returns the remaining sample count without channel information
-                return (cw_samples - delta) / m_incoming_spec.m_channels;
+                return (cw_samples - delta) / m_incoming_spec.chanCount;
             }
             else
             {
@@ -464,7 +464,7 @@ size_t output_pulse::write()
         g_pa_threaded_mainloop_unlock(mainloop);
 
         // and we return the same stuff
-        return (cw_samples - delta) / m_incoming_spec.m_channels;
+        return (cw_samples - delta) / m_incoming_spec.chanCount;
     }
     else
     {
@@ -498,7 +498,7 @@ size_t output_pulse::write()
         }
 
         g_pa_threaded_mainloop_unlock(mainloop);
-        return (cw_samples - delta) / m_incoming_spec.m_channels;
+        return (cw_samples - delta) / m_incoming_spec.chanCount;
     }
 }
 
@@ -584,14 +584,14 @@ void output_pulse::open_incoming_spec()
     }
 
     // always uses the 32-bit float format, probably doesn't make a difference
-    ss.channels = m_incoming_spec.m_channels;
-    ss.rate = m_incoming_spec.m_sample_rate;
+    ss.channels = m_incoming_spec.chanCount;
+    ss.rate = m_incoming_spec.sampleRate;
     ss.format = PA_SAMPLE_FLOAT32LE;
 
     // maximum length of the buffer in bytes
     // TODO: ceil needed? why times four? offset is 0.05, why? audio_sample is typedef to float, so uhh, replace the * 4 with that
     //attr.maxlength = (uint32_t)ceil(m_incoming_spec.time_to_samples(buffer_length + offset) * m_incoming_spec.m_channels * sizeof(audio_sample));
-    attr.maxlength = (uint32_t)ceil(m_incoming_spec.time_to_samples(buffer_length) * m_incoming_spec.m_channels * sizeof(audio_sample));
+    attr.maxlength = (uint32_t)ceil(audio_math::time_to_samples(buffer_length, m_incoming_spec.sampleRate) * m_incoming_spec.chanCount * sizeof(audio_sample));
     // playback only: "recommended to set this to (uint32_t) -1, which will initialize this to a value that is deemed sensible by the server
     // dunno why attr.maxlength was used before
     attr.tlength = (uint32_t)-1;
@@ -724,9 +724,9 @@ void output_pulse::g_enum_devices(output_device_enum_callback& p_callback)
 // okay, this was literally just output_impl::process_samples(const audio_chunk & p_chunk) in the SDK with fade in/out additions
 // TODO: I wonder if we need to even defined this as it's identical, but no time to check now
 void output_pulse::process_samples(const audio_chunk& p_chunk) {
-    pfc::dynamic_assert(m_incoming_ptr == m_incoming.get_size());
-    t_samplespec spec;
-    spec.fromchunk(p_chunk);
+	PFC_ASSERT(queue_empty());
+	PFC_ASSERT(!m_eos);
+    const auto spec = p_chunk.get_spec();
     if (!spec.is_valid()) pfc::throw_exception_with_message< exception_io_data >("Invalid audio stream specifications");
     m_incoming_spec = spec;
     t_size length = p_chunk.get_used_size();

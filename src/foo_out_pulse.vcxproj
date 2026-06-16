@@ -82,7 +82,7 @@
     <IncludePath>$(SolutionDir)..\WTL10_10320_Release\Include;$(SolutionDir)..\SDK-2022-08-10\foobar2000\SDK;$(SolutionDir)..\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <IncludePath>$(SolutionDir)..\WTL10_10320_Release\Include;$(SolutionDir)..\SDK-2022-08-10\foobar2000\SDK;$(SolutionDir)..\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)..\WTL10_01_Release\Include;$(SolutionDir)..\SDK-2025-03-07\foobar2000\SDK;$(SolutionDir)..\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <IncludePath>$(SolutionDir)..\WTL10_10320_Release\Include;$(SolutionDir)..\SDK-2022-08-10\foobar2000\SDK;$(SolutionDir)..\include;$(IncludePath)</IncludePath>
@@ -164,7 +164,7 @@ copy "$(TargetPath)" "%TARGET_DIR%"</Command>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <StringPooling>true</StringPooling>
       <OmitFramePointers>true</OmitFramePointers>
-      <AdditionalIncludeDirectories>..;../..;$(SolutionDir)../WTL10_01_Release/Include;$(SolutionDir)../../libpulse</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..;../..;$(SolutionDir)../WTL10_01_Release/Include;$(SolutionDir)../../libpulse;$(SolutionDir)../SDK-2025-03-07/foobar2000/SDK;$(SolutionDir)../SDK-2025-03-07;$(SolutionDir)../SDK-2025-03-07/foobar2000</AdditionalIncludeDirectories>
       <FloatingPointModel>Fast</FloatingPointModel>
       <PreprocessorDefinitions>NDEBUG;_WINDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -179,7 +179,9 @@ copy "$(TargetPath)" "%TARGET_DIR%"</Command>
       <DataExecutionPrevention>
       </DataExecutionPrevention>
       <TargetMachine>MachineX86</TargetMachine>
-      <AdditionalDependencies>../SDK-2022-08-10/foobar2000/shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>../SDK-2025-03-07/foobar2000/shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>
+      </AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>set TARGET_DIR="$(SolutionDir)..\foobar2000-$(Platform)\components"
@@ -217,7 +219,7 @@ copy "$(TargetPath)" "Z:"</Command>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <DataExecutionPrevention>
       </DataExecutionPrevention>
-      <AdditionalDependencies>../SDK-2022-08-10/foobar2000/shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>../SDK-2025-03-07/foobar2000/shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>set TARGET_DIR="$(SolutionDir)..\foobar2000-$(Platform)\components"
@@ -243,19 +245,19 @@ copy "$(TargetPath)" "%TARGET_DIR%"</Command>
     <ClInclude Include="stdafx.h" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\SDK-2022-08-10\foobar2000\foobar2000_component_client\foobar2000_component_client.vcxproj">
+    <ProjectReference Include="..\SDK-2025-03-07\foobar2000\foobar2000_component_client\foobar2000_component_client.vcxproj">
       <Project>{71ad2674-065b-48f5-b8b0-e1f9d3892081}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\SDK-2022-08-10\foobar2000\helpers\foobar2000_sdk_helpers.vcxproj">
+    <ProjectReference Include="..\SDK-2025-03-07\foobar2000\helpers\foobar2000_sdk_helpers.vcxproj">
       <Project>{ee47764e-a202-4f85-a767-abdab4aff35f}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\SDK-2022-08-10\foobar2000\SDK\foobar2000_SDK.vcxproj">
+    <ProjectReference Include="..\SDK-2025-03-07\foobar2000\SDK\foobar2000_SDK.vcxproj">
       <Project>{e8091321-d79d-4575-86ef-064ea1a4a20d}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\SDK-2022-08-10\libPPUI\libPPUI.vcxproj">
+    <ProjectReference Include="..\SDK-2025-03-07\libPPUI\libPPUI.vcxproj">
       <Project>{7729eb82-4069-4414-964b-ad399091a03f}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\SDK-2022-08-10\pfc\pfc.vcxproj">
+    <ProjectReference Include="..\SDK-2025-03-07\pfc\pfc.vcxproj">
       <Project>{ebfffb4e-261d-44d3-b89c-957b31a0bf9c}</Project>
     </ProjectReference>
   </ItemGroup>

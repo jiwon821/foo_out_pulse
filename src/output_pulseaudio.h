@@ -5,8 +5,10 @@
 #include <windows.h>
 #include <mutex>
 
+#include "advconfig_impl.h"
 #include "core_api.h"
 #include "output.h"
+#include "playback_control.h"
 
 // name of our output, whereever that might come in handy
 #define OUTPUT_NAME "PulseAudio"
@@ -81,8 +83,8 @@ public:
 private:
     // incoming samples and specs as specified in output.h
     pfc::array_t<audio_sample, pfc::alloc_fast_aggressive> m_incoming;
-    size_t m_incoming_ptr;
-    t_samplespec m_incoming_spec, m_active_spec;
+    size_t m_incoming_ptr, m_can_write;
+    audio_chunk::spec_t m_incoming_spec, m_active_spec;
 
     // pulseaudio member variables
     pa_context* context;
