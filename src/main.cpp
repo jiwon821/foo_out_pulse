@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "componentversion.h"
 
 const char* about = "Copyright (c) sammoth, 2020\n"
 "\n"
