@@ -16,7 +16,7 @@
 #define LIBPULSE_DLL = "libpulse-0.dll"
 
 // used to mark whether pulseaudio dll was loaded successfully
-static bool g_pa_is_loaded = false;
+//static bool g_pa_is_loaded = false;
 
 // component setting identifiers I guess
 static const GUID guid_cfg_pulseaudio_branch            = {0x61979096, 0x1158, 0x4860, {0xb0, 0xcc, 0x6f, 0x53, 0x0f, 0x35, 0xaf, 0x26} };
