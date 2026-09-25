@@ -30,11 +30,10 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
         return;
     }
 
-    // just puts foobar2000 to everything
     pa_proplist* proplist = g_pa_proplist_new();
-    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_NAME, APPLICATION_NAME);
-    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_ID, APPLICATION_NAME);
-    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_ICON_NAME, APPLICATION_NAME);
+    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_NAME, "foobar2000");
+    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_ID, "foobar2000");
+    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_ICON_NAME, "foobar2000");
 
     pa_mainloop_api* api;
     g_pa_threaded_mainloop_lock(mainloop);
@@ -688,7 +687,7 @@ bool output_pulse::load_pulse_dll()
 
     component_path = core_api::get_my_full_path();
     component_path.truncate(component_path.scan_filename());
-    libpulse_dll_path << component_path << "PulseAudio-" << PLATFORM << std::filesystem::path::preferred_separator << LIBPULSE_DLL_FILENAME;
+    libpulse_dll_path << component_path << "PulseAudio-" << PLATFORM << std::filesystem::path::preferred_separator << "libpulse-0.dll";
 
     if (!g_pa_load(libpulse_dll_path.str()))
     {
@@ -701,15 +700,12 @@ bool output_pulse::load_pulse_dll()
 
 void output_pulse::g_enum_devices(output_device_enum_callback& p_callback)
 {
-    // dunno how the name change is handled, but as tcp4:127.0.0.1 is my only ever use case under wine I don't really care
-    // get the server string from advanced settings
-    pfc::string8 pulseaudio_server_string;
-    cfg_pulseaudio_server.get(pulseaudio_server_string);
+    pfc::string server;
+    cfg_pulseaudio_server.get(server);
 
-    // run the callback if the pulseaudio libraries are or have been loaded successfully
     if (load_pulse_dll())
     {
-        p_callback.on_device(guid_cfg_pulseaudio_device, pulseaudio_server_string, 9);
+        p_callback.on_device(guid_cfg_pulseaudio_device, server, server.length());
     }
 }
 

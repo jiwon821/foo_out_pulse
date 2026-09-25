@@ -11,39 +11,24 @@
 #include "output.h"
 #include "playback_control.h"
 
-
 #if _WIN64
 #define PLATFORM "Win64"
 #else
 #define PLATFORM "Win32"
 #endif
 
-// name of our output, whereever that might come in handy
-#define OUTPUT_NAME "PulseAudio"
-// and the name of, err, foobar2000
-#define APPLICATION_NAME "foobar2000"
-// name of the libpulse-0.dll to load, without any paths
-#define LIBPULSE_DLL_FILENAME "libpulse-0.dll"
+static const GUID guid_cfg_pulseaudio_branch
+    = {0x61979096, 0x1158, 0x4860, {0xb0, 0xcc, 0x6f, 0x53, 0x0f, 0x35, 0xaf, 0x26} };
+static const GUID guid_cfg_pulseaudio_device
+    = {0x08bf1c19, 0x5b9d, 0x4992, {0x76, 0x18, 0x13, 0x8b, 0xa2, 0x01, 0xd7, 0xa6} };
+static const GUID guid_cfg_pulseaudio_server
+    = {0xbf045193, 0xde9b, 0x432d, {0xa5, 0xd9, 0x36, 0xb1, 0x19, 0x57, 0x6a, 0x61} };
+static const GUID guid_cfg_pulseaudio_output
+    = {0x0fe94df9, 0xc8e2, 0x40a1, {0x40, 0xa1, 0xb1, 0x2a, 0x4a, 0x6c, 0xe4, 0x9e} };
 
-// used to mark whether pulseaudio dll was loaded successfully
-//static bool g_pa_is_loaded = false;
-
-// component setting identifiers I guess
-static const GUID guid_cfg_pulseaudio_branch            = {0x61979096, 0x1158, 0x4860, {0xb0, 0xcc, 0x6f, 0x53, 0x0f, 0x35, 0xaf, 0x26} };
-static const GUID guid_cfg_pulseaudio_prebuffer         = {0x64cd1e28, 0x87ea, 0x41e5, {0xaf, 0x3d, 0xc6, 0xcd, 0x2f, 0x52, 0xac, 0xee} };
-// moved here from g_enum_devices, I guess it's used for getting the pulseaudio output "device" to foobar2000
-static const GUID guid_cfg_pulseaudio_device            = {0x08bf1c19, 0x5b9d, 0x4992, {0x76, 0x18, 0x13, 0x8b, 0xa2, 0x01, 0xd7, 0xa6} };
-static const GUID guid_cfg_pulseaudio_server            = {0xbf045193, 0xde9b, 0x432d, {0xa5, 0xd9, 0x36, 0xb1, 0x19, 0x57, 0x6a, 0x61} };
-// moved here from g_get_guid, seems to be the guid of the component
-static const GUID guid_cfg_pulseaudio_output            = {0x0fe94df9, 0xc8e2, 0x40a1, {0x40, 0xa1, 0xb1, 0x2a, 0x4a, 0x6c, 0xe4, 0x9e} };
-
-// and the actual settings under advanced settings
-static advconfig_branch_factory g_pulseaudio_output_branch(OUTPUT_NAME " output",
+static advconfig_branch_factory g_pulseaudio_output_branch("PulseAudio output",
     guid_cfg_pulseaudio_branch, advconfig_branch::guid_branch_playback, 0);
-static advconfig_integer_factory cfg_pulseaudio_prebuf("Request prebuffer (milliseconds)",
-    guid_cfg_pulseaudio_prebuffer, guid_cfg_pulseaudio_branch, 0, 200, 0, 100000);
-// mt variant allows reading the value from worker threads, which seems to be what we need
-static advconfig_string_factory_MT cfg_pulseaudio_server(OUTPUT_NAME " server",
+static advconfig_string_factory_MT cfg_pulseaudio_server("Server",
     guid_cfg_pulseaudio_server, guid_cfg_pulseaudio_branch, 0, "tcp4:127.0.0.1");
 
 class output_pulse : public output_v4
@@ -79,7 +64,7 @@ public:
 
     // additional output_entry method definitions
     static GUID g_get_guid() { return guid_cfg_pulseaudio_output; }
-    static const char* g_get_name() { return OUTPUT_NAME; }
+    static const char* g_get_name() { return "PulseAudio"; }
     static void g_advanced_settings_popup(HWND, POINT) {}
     static bool g_advanced_settings_query() { return false; }
     static bool g_needs_bitdepth_config() { return false; }
