@@ -4,18 +4,26 @@
 #include <pathcch.h>
 #include <windows.h>
 #include <mutex>
+#include <filesystem>
 
 #include "advconfig_impl.h"
 #include "core_api.h"
 #include "output.h"
 #include "playback_control.h"
 
+
+#if _WIN64
+#define PLATFORM "Win64"
+#else
+#define PLATFORM "Win32"
+#endif
+
 // name of our output, whereever that might come in handy
 #define OUTPUT_NAME "PulseAudio"
 // and the name of, err, foobar2000
 #define APPLICATION_NAME "foobar2000"
 // name of the libpulse-0.dll to load, without any paths
-#define LIBPULSE_DLL = "libpulse-0.dll"
+#define LIBPULSE_DLL_FILENAME "libpulse-0.dll"
 
 // used to mark whether pulseaudio dll was loaded successfully
 //static bool g_pa_is_loaded = false;

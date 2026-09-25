@@ -683,23 +683,15 @@ void output_pulse::console_info(const char* format, ...)
 
 bool output_pulse::load_pulse_dll()
 {
-    pfc::string_formatter path;
-    std::wstringstream wpath_libpulse;
+    pfc::string_formatter component_path;
+    std::wstringstream libpulse_dll_path;
 
-    // libpulse also checks this, maybe we could speed things up here, but leave out for now
-    //if (g_pa_is_loaded)
-    //{
-    //    return true;
-    //}
+    component_path = core_api::get_my_full_path();
+    component_path.truncate(component_path.scan_filename());
+    libpulse_dll_path << component_path << "PulseAudio-" << PLATFORM << std::filesystem::path::preferred_separator << LIBPULSE_DLL_FILENAME;
 
-    // load libpulse-0.dll from the pulse/ directory relative to this component
-    path = core_api::get_my_full_path();
-    path.truncate(path.scan_filename());
-    wpath_libpulse << path << "pulse\\libpulse-0.dll";
-
-    if (!g_pa_load(wpath_libpulse.str()))
+    if (!g_pa_load(libpulse_dll_path.str()))
     {
-        // we don't really do much with the error
         console_error("Could not load libpulse-0.dll");
         return false;
     }
