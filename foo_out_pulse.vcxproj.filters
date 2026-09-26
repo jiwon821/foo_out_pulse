@@ -24,6 +24,9 @@
     <ClCompile Include="output_pulseaudio.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="output_impl.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">

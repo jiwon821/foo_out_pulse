@@ -231,6 +231,7 @@ copy "$(TargetPath)" "%TARGET_DIR%"</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="output_impl.cpp" />
     <ClCompile Include="output_pulseaudio.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>

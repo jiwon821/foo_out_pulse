@@ -45,25 +45,14 @@ public:
     latencyInfo_t get_latency_info();
     t_size get_latency_samples();
 
-    void on_update() {}
-    void volume_set(double p_val)
-    {
-        // Zero use for this, maybe reimplement later
-    }
-
-    void update(bool& p_ready)
-    {
-        p_ready = update_v2() > 0;
-    }
+    void on_update() { /* No-op for now */ }
+    void volume_set(double p_val) { /* Zero use for this, maybe reimplement later */ }
 
     void write(const audio_chunk& p_data);
     t_size can_write_samples();
 
     // "Called after seeking"
     void flush();
-    // "returns 0 if the output isn't ready to receive any new data, otherwise an advisory
-    // number of samples - at the current stream format - that the output expects to take now"
-    size_t update_v2();
     // "Called when there's no more data to send, to prevent infinite waiting"
     //void force_play();
     void on_force_play();
@@ -164,10 +153,14 @@ private:
     static bool load_pulse_dll();
 
     bool queue_empty() const { return m_incoming_ptr == m_incoming.get_size(); }
-    bool m_eos = false; // EOS issued by caller / no more data expected until a flush
-    bool m_sent_force_play = false; // set if sent on_force_play()
+
+    // See output_impl.cpp for the stuff below
+    void update(bool& p_ready);
+    size_t update_v2();
     void process_samples(const audio_chunk& p_chunk);
     size_t process_samples_v2(const audio_chunk&);
+    bool m_eos = false; // EOS issued by caller / no more data expected until a flush
+    bool m_sent_force_play = false; // set if sent on_force_play()
 };
 
 static output_factory_t<output_pulse> g_output_pulse_factory;
