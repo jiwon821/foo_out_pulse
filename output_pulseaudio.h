@@ -20,6 +20,7 @@
 #define APPLICATION_NAME "foobar2000"
 #define APPLICATION_ID APPLICATION_NAME
 #define APPLICATION_ICON_NAME APPLICATION_NAME
+#define OUTPUT_NAME "PulseAudio"
 
 static const GUID guid_cfg_pulseaudio_branch
     = {0x61979096, 0x1158, 0x4860, {0xb0, 0xcc, 0x6f, 0x53, 0x0f, 0x35, 0xaf, 0x26} };
@@ -30,7 +31,7 @@ static const GUID guid_cfg_pulseaudio_server
 static const GUID guid_cfg_pulseaudio_output
     = {0x0fe94df9, 0xc8e2, 0x40a1, {0x40, 0xa1, 0xb1, 0x2a, 0x4a, 0x6c, 0xe4, 0x9e} };
 
-static advconfig_branch_factory g_pulseaudio_output_branch("PulseAudio output",
+static advconfig_branch_factory g_pulseaudio_output_branch(OUTPUT_NAME " output",
     guid_cfg_pulseaudio_branch, advconfig_branch::guid_branch_playback, 0);
 static advconfig_string_factory_MT cfg_pulseaudio_server("Server",
     guid_cfg_pulseaudio_server, guid_cfg_pulseaudio_branch, 0, "tcp4:127.0.0.1");
@@ -72,7 +73,7 @@ public:
 
     // additional output_entry method definitions
     static GUID g_get_guid() { return guid_cfg_pulseaudio_output; }
-    static const char* g_get_name() { return "PulseAudio"; }
+    static const char* g_get_name() { return OUTPUT_NAME; }
     static void g_advanced_settings_popup(HWND, POINT) {}
     static bool g_advanced_settings_query() { return false; }
     static bool g_needs_bitdepth_config() { return false; }
@@ -119,6 +120,7 @@ private:
         switch (g_pa_stream_get_state(s))
         {
         case PA_STREAM_FAILED:
+            console::error("PA_STREAM_FAILED");
         case PA_STREAM_READY:
         case PA_STREAM_TERMINATED:
             g_pa_threaded_mainloop_signal(ml, 0);
@@ -160,5 +162,4 @@ private:
     size_t process_samples_v2(const audio_chunk&);
 };
 
-// needs to reside where the class definition is
 static output_factory_t<output_pulse> g_output_pulse_factory;
