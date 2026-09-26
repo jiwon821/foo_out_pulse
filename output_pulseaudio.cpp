@@ -54,8 +54,6 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
         g_pa_threaded_mainloop_stop(mainloop);
         g_pa_threaded_mainloop_free(mainloop);
         mainloop = NULL;
-
-        // full playback stop
         stop();
         return;
     }
@@ -558,7 +556,6 @@ void output_pulse::open_incoming_spec()
 
     if (!m_incoming_spec.is_valid())
     {
-        console_info("Invalid incoming_spec");
         return;
     }
 
@@ -567,22 +564,11 @@ void output_pulse::open_incoming_spec()
     ss.rate = m_incoming_spec.sampleRate;
     ss.format = PA_SAMPLE_FLOAT32LE;
 
-    // maximum length of the buffer in bytes
-    // TODO: ceil needed? why times four? offset is 0.05, why? audio_sample is typedef to float, so uhh, replace the * 4 with that
     //attr.maxlength = (uint32_t)ceil(m_incoming_spec.time_to_samples(buffer_length + offset) * m_incoming_spec.m_channels * sizeof(audio_sample));
     attr.maxlength = (uint32_t)ceil(audio_math::time_to_samples(buffer_length, m_incoming_spec.sampleRate) * m_incoming_spec.chanCount * sizeof(audio_sample));
-    // playback only: "recommended to set this to (uint32_t) -1, which will initialize this to a value that is deemed sensible by the server
-    // dunno why attr.maxlength was used before
     attr.tlength = (uint32_t)-1;
-    // "server does not request less than minreq bytes from the client", "recommended to set this to (uint32_t) -1"
-    // here was the minreq workaround, so maybe will have to return to this later
-    //attr.minreq = cfg_pulseaudio_minreq_workaround.get() ? attr.maxlength / 2 : (uint32_t)-1;
     attr.minreq = (uint32_t)-1;
-    // "server does not start with playback before at least prebuf bytes are available in the buffer", "recommended to set this to (uint32_t) -1, which will initialize this to the same value as tlength"
-    // TODO: the original is weird
-    //attr.prebuf = (uint32_t)ceil(m_incoming_spec.time_to_samples(0.001 * cfg_pulseaudio_prebuf) * m_incoming_spec.m_channels * 4);
     attr.prebuf = (uint32_t)-1;
-    // recording only: fragment size, just zero it out
     attr.fragsize = 0;
 
     console_info("requesting buffer attributes: maxlength %zu, minreq %zu, tlength %zu, prebuf %zu", attr.maxlength, attr.minreq, attr.tlength, attr.prebuf);
