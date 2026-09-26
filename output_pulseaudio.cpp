@@ -3,14 +3,18 @@
 
 output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_dither, t_uint32 p_bitdepth)
       : buffer_length(p_buffer_length),
-        next_write_relative(false)
+        next_write_relative(false),
+        stream(NULL),
+        context(NULL),
+        mainloop(NULL),
+        draining(false),
+        drained(false),
+        m_incoming_ptr(0)
 {
-    stream = NULL;
-    context = NULL;
-    mainloop = NULL;
-    draining = false;
-    drained = false;
-    m_incoming_ptr = 0;
+    pa_context_state_t state;
+    pa_mainloop_api* api;
+    pa_proplist* proplist;
+    pfc::string server;
 
     if (!load_pulse_dll())
     {
@@ -23,29 +27,25 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
     {
         g_pa_threaded_mainloop_free(mainloop);
         mainloop = NULL;
-        console_error("pa_threaded_mainloop_start");
+        console::error("pa_threaded_mainloop_start");
         stop();
         return;
     }
 
-    pa_proplist* proplist = g_pa_proplist_new();
-    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_NAME, "foobar2000");
-    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_ID, "foobar2000");
-    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_ICON_NAME, "foobar2000");
+    proplist = g_pa_proplist_new();
+    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_NAME, APPLICATION_NAME);
+    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_ID, APPLICATION_ID);
+    g_pa_proplist_sets(proplist, PA_PROP_APPLICATION_ICON_NAME, APPLICATION_ICON_NAME);
 
-    pa_mainloop_api* api;
     g_pa_threaded_mainloop_lock(mainloop);
     api = g_pa_threaded_mainloop_get_api(mainloop);
     context = g_pa_context_new_with_proplist(api, "foobar2000", proplist);
-    if (proplist)
-    {
-        g_pa_proplist_free(proplist);
-    }
+    g_pa_proplist_free(proplist);
 
-    // notifies context_state_cb when the server connection is established below
     g_pa_context_set_state_callback(context, context_state_cb, mainloop);
 
-    if (!context_connect())
+    cfg_pulseaudio_server.get(server);
+    if (g_pa_context_connect(context, server, (pa_context_flags_t)0, NULL) < 0)
     {
         g_pa_context_unref(context);
         context = NULL;
@@ -53,41 +53,30 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
         g_pa_threaded_mainloop_stop(mainloop);
         g_pa_threaded_mainloop_free(mainloop);
         mainloop = NULL;
+        console::error("pa_context_connect");
         stop();
         return;
     }
 
-    g_pa_threaded_mainloop_unlock(mainloop);
-}
-
-bool output_pulse::context_connect()
-{
-    pfc::string8 server_string;
-    pa_context_state_t state;
-
-    // read server connection string from settings
-    cfg_pulseaudio_server.get(server_string);
-
-    // connect context to server, returns negative on certain errors: https://www.freedesktop.org/software/pulseaudio/doxygen/context_8h.html#a983ce13d45c5f4b0db8e1a34e21f9fce
-    if (g_pa_context_connect(context, server_string, (pa_context_flags_t)0, NULL) < 0)
-    {
-        console_error("pa_context_connect");
-        return false;
-    }
-
-    // wait until ready
     while ((state = g_pa_context_get_state(context)) != PA_CONTEXT_READY)
     {
         if (state == PA_CONTEXT_FAILED || state == PA_CONTEXT_TERMINATED)
         {
-            console_error("pa_context_get_state");
-            return false;
+            g_pa_context_unref(context);
+            context = NULL;
+            g_pa_threaded_mainloop_unlock(mainloop);
+            g_pa_threaded_mainloop_stop(mainloop);
+            g_pa_threaded_mainloop_free(mainloop);
+            mainloop = NULL;
+            console::error("pa_context_get_state");
+            stop();
+            return;
         }
 
         g_pa_threaded_mainloop_wait(mainloop);
     }
 
-    return true;
+    g_pa_threaded_mainloop_unlock(mainloop);
 }
 
 output_pulse::~output_pulse()

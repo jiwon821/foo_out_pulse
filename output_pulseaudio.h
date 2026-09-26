@@ -17,6 +17,10 @@
 #define PLATFORM "Win32"
 #endif
 
+#define APPLICATION_NAME "foobar2000"
+#define APPLICATION_ID APPLICATION_NAME
+#define APPLICATION_ICON_NAME APPLICATION_NAME
+
 static const GUID guid_cfg_pulseaudio_branch
     = {0x61979096, 0x1158, 0x4860, {0xb0, 0xcc, 0x6f, 0x53, 0x0f, 0x35, 0xaf, 0x26} };
 static const GUID guid_cfg_pulseaudio_device
@@ -139,9 +143,6 @@ private:
     // is the audio stream being drained or already drained
     bool draining;
     bool drained;
-
-    // wrapper for connecting the pulseaudio context, returns true on success
-    bool context_connect();
 
     // wrapper for connecting the pulseaudio stream, returns true on success
     bool stream_connect(const pa_sample_spec*, const pa_buffer_attr*);
