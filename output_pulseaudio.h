@@ -42,22 +42,17 @@ public:
     output_pulse(const GUID&, double, bool, t_uint32);
     ~output_pulse();
 
-    latencyInfo_t get_latency_info();
-    t_size get_latency_samples();
-
     void on_update() { /* No-op for now */ }
-    void volume_set(double p_val) { /* Zero use for this, maybe reimplement later */ }
-
     void write(const audio_chunk& p_data);
     t_size can_write_samples();
-
-    // "Called after seeking"
-    void flush();
-    // "Called when there's no more data to send, to prevent infinite waiting"
-    //void force_play();
+    t_size get_latency_samples();
+    //struct latencySamples_t { size_t soft, hard; }; // TODO
+    //latencySamples_t get_latency_samples_v2(); // TODO
+    void on_flush();
+    void open(audio_chunk::spec_t const& p_spec);
     void on_force_play();
-    // pauses (true) or resumes (false) the stream depending on the parameter
-    void pause(bool);
+    void pause(bool p_state);
+    void volume_set(double p_val) { /* Zero use for this, maybe reimplement later */ }
 
     // output_entry method definition; enumerates pulseaudio devices
     static void g_enum_devices(output_device_enum_callback&);
@@ -74,18 +69,13 @@ public:
     static bool g_is_high_latency() { return true; }
 
 private:
-    void send_force_play();
-    void force_play();
-
-    // incoming samples and specs as specified in output.h
-    pfc::array_t<audio_sample, pfc::alloc_fast_aggressive> m_incoming;
-    size_t m_incoming_ptr, m_can_write;
-    audio_chunk::spec_t m_incoming_spec, m_active_spec;
-
-    // pulseaudio member variables
     pa_context* context;
     pa_stream* stream;
     pa_threaded_mainloop* mainloop;
+    bool draining;
+    bool drained;
+    bool next_write_relative;
+    double buffer_length;
 
     static void context_state_cb(pa_context* ctx, void* userdata)
     {
@@ -127,38 +117,34 @@ private:
         g_pa_threaded_mainloop_signal(ml, 0);
     }
 
-    static void stop()
-    {
+    static void stop() {
         service_ptr_t<playback_control> playback_control;
-        fb2k::inMainThread([]()
-        {
+        fb2k::inMainThread([]() {
             playback_control::get()->stop();
         });
     }
 
-    // is the audio stream being drained or already drained
-    bool draining;
-    bool drained;
-
-    // wrapper for connecting the pulseaudio stream, returns true on success
     bool stream_connect(const pa_sample_spec*, const pa_buffer_attr*);
-
-    // indicates whether we are seeking or not
-    bool next_write_relative;
-
-    double buffer_length;
-
-    void open(audio_chunk::spec_t const& p_spec);
 
     static bool load_pulse_dll();
 
-    bool queue_empty() const { return m_incoming_ptr == m_incoming.get_size(); }
+    latencyInfo_t get_latency_info();
 
     // See output_impl.cpp for the stuff below
+    void flush();
     void update(bool& p_ready);
     size_t update_v2();
     void process_samples(const audio_chunk& p_chunk);
     size_t process_samples_v2(const audio_chunk&);
+    void force_play();
+    void on_flush_internal();
+    void send_force_play();
+
+    bool queue_empty() const { return m_incoming_ptr == m_incoming.get_size(); }
+
+    pfc::array_t<audio_sample, pfc::alloc_fast_aggressive> m_incoming;
+    size_t m_incoming_ptr = 0, m_can_write = 0;
+    audio_chunk::spec_t m_incoming_spec, m_active_spec;
     bool m_eos = false; // EOS issued by caller / no more data expected until a flush
     bool m_sent_force_play = false; // set if sent on_force_play()
 };

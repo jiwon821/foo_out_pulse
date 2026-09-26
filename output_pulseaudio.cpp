@@ -109,22 +109,9 @@ void output_pulse::pause(bool p_state)
     }
 }
 
-void output_pulse::force_play() {
-    if (m_eos) return;
-    m_eos = true;
-    if (queue_empty()) send_force_play();
-}
-void output_pulse::send_force_play() {
-    if (m_sent_force_play) return;
-    m_sent_force_play = true;
-    this->on_force_play();
-}
-
-void output_pulse::flush()
+void output_pulse::on_flush()
 {
-    m_incoming_ptr = 0;
-    m_incoming.set_size(0);
-    next_write_relative = true;
+    next_write_relative = true; // TODO
 }
 
 t_size output_pulse::get_latency_samples()

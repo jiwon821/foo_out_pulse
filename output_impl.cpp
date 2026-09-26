@@ -6,6 +6,29 @@
 // converted to output_pulse methods). Hopefully will get rid of this file in
 // the future.
 
+void output_pulse::force_play() {
+	if (m_eos) return;
+	m_eos = true;
+	if (queue_empty()) send_force_play();
+}
+
+void output_pulse::send_force_play() {
+	if (m_sent_force_play) return;
+	m_sent_force_play = true;
+	this->on_force_play();
+}
+
+void output_pulse::on_flush_internal() {
+	m_eos = false; m_sent_force_play = false;
+	m_incoming_ptr = 0;
+	m_incoming.set_size(0);
+}
+
+void output_pulse::flush() {
+	on_flush_internal();
+	on_flush();
+}
+
 void output_pulse::update(bool& p_ready) {
 	p_ready = update_v2() > 0;
 }
