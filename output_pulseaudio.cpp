@@ -170,8 +170,8 @@ t_size output_pulse::get_latency_samples()
     return (t_size)ret;
 }
 
-size_t output_pulse::update_v2()
-{
+size_t output_pulse::update_v2() {
+
     // Clear preemptively
     m_can_write = 0;
 
@@ -187,7 +187,8 @@ size_t output_pulse::update_v2()
             m_sent_force_play = false;
             open(m_incoming_spec);
             m_active_spec = m_incoming_spec;
-        } else {
+        }
+        else {
             // Previous format still playing, accept no more data
             this->send_force_play();
             return 0;
@@ -200,11 +201,9 @@ size_t output_pulse::update_v2()
     // We don't know what can_write_samples() actually does, could be expensive, avoid calling it repeatedly
     m_can_write = this->can_write_samples();
 
-    if (m_incoming_ptr < m_incoming.get_size())
-    {
+    if (m_incoming_ptr < m_incoming.get_size()) {
         t_size delta = pfc::min_t(m_incoming.get_size() - m_incoming_ptr, m_can_write * m_incoming_spec.chanCount);
-        if (delta > 0)
-        {
+        if (delta > 0) {
             PFC_ASSERT(!m_sent_force_play);
             write(audio_chunk_temp_impl(m_incoming.get_ptr() + m_incoming_ptr, delta / m_incoming_spec.chanCount, m_incoming_spec.sampleRate, m_incoming_spec.chanCount, m_incoming_spec.chanMask));
             m_incoming_ptr += delta;
@@ -212,10 +211,9 @@ size_t output_pulse::update_v2()
                 this->send_force_play();
             }
         }
-        
-       m_can_write -= delta / m_incoming_spec.chanCount;
+
+        m_can_write -= delta / m_incoming_spec.chanCount;
     }
-    
     return m_can_write;
 }
 
