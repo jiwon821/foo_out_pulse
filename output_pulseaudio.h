@@ -59,8 +59,6 @@ public:
     size_t update_v2();
     // "Called when there's no more data to send, to prevent infinite waiting"
     void force_play();
-    // "Sends new samples to the device. Allowed to be called only when update() indicates that the device is ready."
-    void process_samples(const audio_chunk&);
 
     // pauses (true) or resumes (false) the stream depending on the parameter
     void pause(bool);
@@ -157,6 +155,9 @@ private:
 
     static bool load_pulse_dll();
     static void console_error(const char*, ...);
+
+    void process_samples(const audio_chunk& p_chunk);
+    size_t process_samples_v2(const audio_chunk&);
 };
 
 // needs to reside where the class definition is

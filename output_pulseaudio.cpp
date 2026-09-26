@@ -464,15 +464,45 @@ void output_pulse::g_enum_devices(output_device_enum_callback& p_callback)
     }
 }
 
-// okay, this was literally just output_impl::process_samples(const audio_chunk & p_chunk) in the SDK with fade in/out additions
-// TODO: I wonder if we need to even defined this as it's identical, but no time to check now
-void output_pulse::process_samples(const audio_chunk& p_chunk) {
-	PFC_ASSERT(queue_empty());
-	PFC_ASSERT(!m_eos);
-    const auto spec = p_chunk.get_spec();
+static void spec_sanity(audio_chunk::spec_t const& spec) {
     if (!spec.is_valid()) pfc::throw_exception_with_message< exception_io_data >("Invalid audio stream specifications");
-    m_incoming_spec = spec;
-    t_size length = p_chunk.get_used_size();
-    m_incoming.set_data_fromptr(p_chunk.get_data(), length);
+}
+
+size_t output_pulse::process_samples_v2(const audio_chunk& p_chunk) {
+    PFC_ASSERT(queue_empty());
+    PFC_ASSERT(!m_eos);
+    const auto spec = p_chunk.get_spec();
+    if (m_incoming_spec != spec) {
+        spec_sanity(spec);
+        m_incoming_spec = spec;
+        return 0;
+    }
+
+    auto in = p_chunk.get_sample_count();
+    if (in > m_can_write) in = m_can_write;
+    if (in > 0) {
+        write(audio_chunk_partial_ref(p_chunk, 0, in));
+        m_can_write -= in;
+    }
+    return in;
+}
+
+void output_pulse::process_samples(const audio_chunk& p_chunk) {
+    PFC_ASSERT(queue_empty());
+    PFC_ASSERT(!m_eos);
+    const auto spec = p_chunk.get_spec();
+    size_t taken = 0;
+    if (m_incoming_spec == spec) {
+        // Try bypassing intermediate buffer
+        taken = this->process_samples_v2(p_chunk);
+        if (taken == p_chunk.get_sample_count()) return; // all written, success
+        taken *= spec.chanCount;
+    }
+    else {
+        spec_sanity(spec);
+        m_incoming_spec = spec;
+    }
+    // Queue what's left for update() to eat later
+    m_incoming.set_data_fromptr(p_chunk.get_data() + taken, p_chunk.get_used_size() - taken);
     m_incoming_ptr = 0;
 }
