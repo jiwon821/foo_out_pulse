@@ -180,17 +180,14 @@ void output_pulse::flush()
     trigger_update.set_state(true);
 }
 
-// it just calls flush() in output.h
-//void output_pulse::flush_changing_track()
-
-void output_pulse::update(bool& p_ready)
-{
-    p_ready = update_v2() > 0;
-}
-
 size_t output_pulse::update_v2()
 {
+    m_can_write = 0;
+
+    //on_update(); // TODO
     trigger_update.set_state(false);
+
+    if (!m_incoming_spec.is_valid()) return SIZE_MAX;
 
     if (m_incoming_spec != m_active_spec)
     {
@@ -198,24 +195,63 @@ size_t output_pulse::update_v2()
         {
             next_write_relative = false;
             drained = false;
-            open_incoming_spec();
+            open(m_incoming_spec);
+            m_active_spec = m_incoming_spec;
         }
         else
         {
-            force_play();
+            force_play(); // TODO
+            return 0;
         }
     }
 
-    size_t retCanWriteSamples = 0;
-    if (m_incoming_spec == m_active_spec && m_incoming_ptr < m_incoming.get_size())
+    if (m_incoming_ptr < m_incoming.get_size())
     {
-        retCanWriteSamples = write();
+        m_can_write = write();
     }
     else if (m_incoming_ptr == m_incoming.get_size())
     {
-        retCanWriteSamples = SIZE_MAX;
+        m_can_write = SIZE_MAX;
     }
-    return retCanWriteSamples;
+    return m_can_write;
+}
+
+void output_pulse::open(audio_chunk::spec_t const& p_spec)
+{
+    pa_sample_spec ss;
+    pa_buffer_attr attr;
+
+    ss.channels = p_spec.chanCount;
+    ss.rate = p_spec.sampleRate;
+    ss.format = PA_SAMPLE_FLOAT32LE;
+
+    attr.maxlength = (uint32_t)ceil(audio_math::time_to_samples(buffer_length, p_spec.sampleRate) * p_spec.chanCount * sizeof(audio_sample));
+    attr.tlength = (uint32_t)-1;
+    attr.minreq = (uint32_t)-1;
+    attr.prebuf = (uint32_t)-1;
+    attr.fragsize = 0;
+
+    g_pa_threaded_mainloop_lock(mainloop);
+    
+    if (stream)
+    {
+        g_pa_stream_set_state_callback(stream, NULL, NULL);
+        g_pa_stream_set_underflow_callback(stream, NULL, NULL);
+        g_pa_stream_set_write_callback(stream, NULL, NULL);
+        g_pa_stream_disconnect(stream);
+        g_pa_stream_unref(stream);
+        stream = NULL;
+    }
+    
+    if (!stream_connect(&ss, &attr))
+    {
+        g_pa_threaded_mainloop_unlock(mainloop);
+        stop();
+        return;
+    }
+
+    g_pa_threaded_mainloop_unlock(mainloop);
+    trigger_update.set_state(true);
 }
 
 void output_pulse::force_play()
@@ -412,7 +448,6 @@ size_t output_pulse::write()
         }
 
         // calculate our "write index". I wonder what the magic number 4 is. at least it's sizeof(audio_sample)
-        // see also open_incoming_spec() for the magic number 4
         write_index = timing_info->read_index - (timing_info->read_index % (sizeof(audio_sample) * m_active_spec.chanCount));
         // sample count? is the "target length of the buffer" divided by the size of audio sample. makes sense
         cw_samples = buffer_attr->tlength / sizeof(audio_sample);
@@ -481,27 +516,12 @@ size_t output_pulse::write()
     }
 }
 
-
 void output_pulse::stream_drained_cb(pa_stream* s, int success, void* userdata)
 {
     output_pulse* o = (output_pulse*)userdata;
     o->draining = false;
     o->drained = true;
     o->trigger_update.set_state(true);
-}
-
-void output_pulse::close_stream()
-{
-    if (stream)
-    {
-        g_pa_stream_set_state_callback(stream, NULL, NULL);
-        g_pa_stream_set_started_callback(stream, NULL, NULL);
-        g_pa_stream_set_underflow_callback(stream, NULL, NULL);
-        g_pa_stream_set_write_callback(stream, NULL, NULL);
-        g_pa_stream_disconnect(stream);
-        g_pa_stream_unref(stream);
-        stream = NULL;
-    }
 }
 
 bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr* attr)
@@ -547,47 +567,6 @@ bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr
     }
 
     return true;
-}
-
-void output_pulse::open_incoming_spec()
-{
-    pa_sample_spec ss;
-    pa_buffer_attr attr;
-
-    if (!m_incoming_spec.is_valid())
-    {
-        return;
-    }
-
-    // always uses the 32-bit float format, probably doesn't make a difference
-    ss.channels = m_incoming_spec.chanCount;
-    ss.rate = m_incoming_spec.sampleRate;
-    ss.format = PA_SAMPLE_FLOAT32LE;
-
-    //attr.maxlength = (uint32_t)ceil(m_incoming_spec.time_to_samples(buffer_length + offset) * m_incoming_spec.m_channels * sizeof(audio_sample));
-    attr.maxlength = (uint32_t)ceil(audio_math::time_to_samples(buffer_length, m_incoming_spec.sampleRate) * m_incoming_spec.chanCount * sizeof(audio_sample));
-    attr.tlength = (uint32_t)-1;
-    attr.minreq = (uint32_t)-1;
-    attr.prebuf = (uint32_t)-1;
-    attr.fragsize = 0;
-
-    console_info("requesting buffer attributes: maxlength %zu, minreq %zu, tlength %zu, prebuf %zu", attr.maxlength, attr.minreq, attr.tlength, attr.prebuf);
-
-    g_pa_threaded_mainloop_lock(mainloop);
-
-    // I guess we close before creating a new stream
-    close_stream();
-    
-    if (!stream_connect(&ss, &attr))
-    {
-        g_pa_threaded_mainloop_unlock(mainloop);
-        stop();
-        return;
-    }
-
-    m_active_spec = m_incoming_spec;
-    g_pa_threaded_mainloop_unlock(mainloop);
-    trigger_update.set_state(true);
 }
 
 void output_pulse::pa_console_error(const char *name, int err)

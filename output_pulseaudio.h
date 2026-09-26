@@ -42,8 +42,10 @@ public:
     void volume_set(double);
     // "Called after seeking"
     void flush();
-    // bool "receives value indicating whether the device is ready for next process_samples() call"
-    void update(bool&);
+    void update(bool& p_ready)
+    {
+        p_ready = update_v2() > 0;
+    }
     // "returns 0 if the output isn't ready to receive any new data, otherwise an advisory
     // number of samples - at the current stream format - that the output expects to take now"
     size_t update_v2();
@@ -136,10 +138,8 @@ private:
 
     // writes stuff to pulseaudio stream
     size_t write();
-    // closes the pulseaudio stream
-    void close_stream();
-    // opens a pulseaudio stream for the incoming spec
-    void open_incoming_spec();
+
+    void open(audio_chunk::spec_t const& p_spec);
 
     static bool load_pulse_dll();
      
