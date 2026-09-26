@@ -127,6 +127,49 @@ void output_pulse::flush()
     next_write_relative = true;
 }
 
+t_size output_pulse::get_latency_samples()
+{
+    int64_t ret = 0;
+    pa_usec_t latency_usec;
+    pa_operation* op;
+
+    if (m_incoming_spec.is_valid()) {
+        ret += (m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.chanCount;
+    }
+
+    if (m_active_spec.is_valid() && stream && !drained) {
+
+        g_pa_stream_get_timing_info(stream);
+        if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
+        {
+            ret += audio_math::time_to_samples(latency_usec * 0.000001, m_active_spec.sampleRate);
+        }
+        else
+        {
+            g_pa_threaded_mainloop_lock(mainloop);
+            if (op = g_pa_stream_update_timing_info(stream, stream_success_cb, mainloop))
+            {
+                while (g_pa_operation_get_state(op) == PA_OPERATION_RUNNING)
+                {
+                    g_pa_threaded_mainloop_wait(mainloop);
+                }
+                g_pa_operation_unref(op);
+            }
+            g_pa_threaded_mainloop_unlock(mainloop);
+
+            if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
+            {
+                ret += audio_math::time_to_samples(latency_usec * 0.000001, m_active_spec.sampleRate);
+            }
+            else
+            {
+                console::error("pa_stream_get_latency");
+            }
+        }
+    }
+    return (t_size)ret;
+}
+
 size_t output_pulse::update_v2()
 {
     // Clear preemptively
@@ -139,23 +182,24 @@ size_t output_pulse::update_v2()
 
     // First chunk in or format change
     if (m_incoming_spec != m_active_spec) {
-        if (drained || next_write_relative)
-        {
-            next_write_relative = false;
-            drained = false;
+        if (get_latency_samples() == 0) {
+            // Ready for new format
+            m_sent_force_play = false;
             open(m_incoming_spec);
             m_active_spec = m_incoming_spec;
-        }
-        else
-        {
+        } else {
             // Previous format still playing, accept no more data
             this->send_force_play();
             return 0;
         }
     }
 
+    // opened for m_incoming_spec stream
+
+    // Store & update m_can_write on our end
+    // We don't know what can_write_samples() actually does, could be expensive, avoid calling it repeatedly
     m_can_write = this->can_write_samples();
-    
+
     if (m_incoming_ptr < m_incoming.get_size())
     {
         t_size delta = pfc::min_t(m_incoming.get_size() - m_incoming_ptr, m_can_write * m_incoming_spec.chanCount);
@@ -164,6 +208,9 @@ size_t output_pulse::update_v2()
             PFC_ASSERT(!m_sent_force_play);
             write(audio_chunk_temp_impl(m_incoming.get_ptr() + m_incoming_ptr, delta / m_incoming_spec.chanCount, m_incoming_spec.sampleRate, m_incoming_spec.chanCount, m_incoming_spec.chanMask));
             m_incoming_ptr += delta;
+            if (m_eos && this->queue_empty()) {
+                this->send_force_play();
+            }
         }
         
        m_can_write -= delta / m_incoming_spec.chanCount;

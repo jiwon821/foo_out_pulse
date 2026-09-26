@@ -43,6 +43,7 @@ public:
     ~output_pulse();
 
     latencyInfo_t get_latency_info();
+    t_size get_latency_samples();
 
     void on_update() {}
     void volume_set(double p_val)
