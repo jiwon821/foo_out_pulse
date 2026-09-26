@@ -31,11 +31,13 @@ static advconfig_branch_factory g_pulseaudio_output_branch("PulseAudio output",
 static advconfig_string_factory_MT cfg_pulseaudio_server("Server",
     guid_cfg_pulseaudio_server, guid_cfg_pulseaudio_branch, 0, "tcp4:127.0.0.1");
 
-class output_pulse : public output_v4
+class output_pulse : public output_v8
 {
 public:
     output_pulse(const GUID&, double, bool, t_uint32);
     ~output_pulse();
+
+    latencyInfo_t get_latency_info();
 
     void volume_set(double);
     // "Called after seeking"
@@ -49,12 +51,6 @@ public:
     void force_play();
     // "Sends new samples to the device. Allowed to be called only when update() indicates that the device is ready."
     void process_samples(const audio_chunk&);
-
-    // whether the audio stream is being played or not, defined in output
-    bool is_progressing() { return progressing; }
-
-    // seconds of audio data queued for playback, defined in output
-    double get_latency();
 
     // pauses (true) or resumes (false) the stream depending on the parameter
     void pause(bool);
@@ -92,11 +88,6 @@ private:
     // stream callbacks; define simple ones simply here
     static void stream_drained_cb(pa_stream*, int, void*);
 
-    static void stream_started_cb(pa_stream* p, void* userdata)
-    {
-        ((output_pulse*)userdata)->progressing = true;
-    }
-
     static void stream_state_cb(pa_stream*, void*);
 
     static void stream_success_cb(pa_stream* s, int success, void* userdata)
@@ -114,8 +105,6 @@ private:
     // TODO: seems to be used just in set_volume
     static void sink_input_info_cb(pa_context*, const pa_sink_input_info*, int, void*);
 
-
-
     // stops playback, used only ever in error situations
     static void stop()
     {
@@ -124,10 +113,6 @@ private:
             playback_control::get()->stop();
         });
     }
-
-
-    // is the audio stream being played or not, read by is_progressing
-    bool progressing;
 
     // is the audio stream being drained or already drained
     bool draining;
@@ -144,7 +129,6 @@ private:
     // indicates whether we are seeking or not
     bool next_write_relative;
 
-    const double offset = 0.05;
     double buffer_length;
     pa_volume_t volume;
     pfc::event trigger_update;

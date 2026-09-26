@@ -9,7 +9,6 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
     stream = NULL;
     context = NULL;
     mainloop = NULL;
-    progressing = false;
     draining = false;
     drained = false;
     m_incoming_ptr = 0;
@@ -266,66 +265,50 @@ void output_pulse::force_play()
     }
 }
 
-double output_pulse::get_latency()
+output_v8::latencyInfo_t output_pulse::get_latency_info()
 {
-    double latency_sec = 0;
-    size_t samples;
+    latencyInfo_t ret = {};
     pa_usec_t latency_usec;
-    const pa_timing_info *timing_info;
-    pa_operation *operation;
+    pa_operation* op;
 
-    if (m_incoming_spec.is_valid())
-    {
-        // whatever is left in the m_i ncoming array, divided then by the number of channels
-        samples = m_incoming.get_size() - m_incoming_ptr;
-        latency_sec += audio_math::samples_to_time(samples / m_incoming_spec.chanCount, m_incoming_spec.sampleRate);
+    if (m_incoming_spec.is_valid()) {
+        ret.latency += audio_math::samples_to_time((m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.chanCount, m_incoming_spec.sampleRate);
     }
 
-    // get the latency for the currently active spec if the stream has not been drained
-    if (m_active_spec.is_valid() && stream && !drained)
-    {
-        if (!(timing_info = g_pa_stream_get_timing_info(stream)))
-        {
-            // timing info received for the first time, log that for now: https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#a090147751441a97e04a4acef1d6514cb
-            console_info("Received initial timing information");
-        }
-
-        // returns negative on error, 0 on success: https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#aa521efcc16fe2abf0f8461462432ac16
+    if (m_active_spec.is_valid() && stream && !drained) {
+        
+        g_pa_stream_get_timing_info(stream);
         if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
         {
-            latency_sec += (latency_usec * 0.000001);
+            ret.latency += (latency_usec * 0.000001);
+            ret.hardQueued += ret.latency; // TODO
         }
         else
         {
-            // need to update timing information
-            console_info("Updating timing information");
             g_pa_threaded_mainloop_lock(mainloop);
-
-            if (operation = g_pa_stream_update_timing_info(stream, stream_success_cb, mainloop))
+            if (op = g_pa_stream_update_timing_info(stream, stream_success_cb, mainloop))
             {
-                while (g_pa_operation_get_state(operation) == PA_OPERATION_RUNNING)
+                while (g_pa_operation_get_state(op) == PA_OPERATION_RUNNING)
                 {
                     g_pa_threaded_mainloop_wait(mainloop);
                 }
-                g_pa_operation_unref(operation);
+                g_pa_operation_unref(op);
             }
-
             g_pa_threaded_mainloop_unlock(mainloop);
+
             if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
             {
-                latency_sec += (latency_usec * 0.000001);
+                ret.latency += (latency_usec * 0.000001);
+                ret.hardQueued += ret.latency; // TODO
             }
             else
             {
-                console_error("pa_stream_get_latency returned error after timing information update");
+                console_error("pa_stream_get_latency");
             }
         }
     }
-
-    return latency_sec;
+    return ret;
 }
-
-
 
 void output_pulse::context_subscribe_cb(pa_context* c, pa_subscription_event_type_t t, uint32_t idx, void* userdata)
 {
@@ -392,7 +375,6 @@ void output_pulse::stream_state_cb(pa_stream* s, void* userdata)
 void output_pulse::stream_underflow_cb(pa_stream* s, void* userdata)
 {
     output_pulse* o = (output_pulse*)userdata;
-    o->progressing = false;
     o->trigger_update.set_state(true);
 }
 
@@ -521,7 +503,6 @@ void output_pulse::close_stream()
         g_pa_stream_disconnect(stream);
         g_pa_stream_unref(stream);
         stream = NULL;
-        progressing = false;
     }
 }
 
@@ -547,7 +528,6 @@ bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr
 
     // set callbacks
     g_pa_stream_set_state_callback(stream, stream_state_cb, mainloop);
-    g_pa_stream_set_started_callback(stream, stream_started_cb, this);
     g_pa_stream_set_underflow_callback(stream, stream_underflow_cb, this);
     g_pa_stream_set_write_callback(stream, stream_write_cb, this);
 
@@ -611,9 +591,7 @@ void output_pulse::open_incoming_spec()
 
     // I guess we close before creating a new stream
     close_stream();
-    // hmm
-    progressing = false;
-
+    
     if (!stream_connect(&ss, &attr))
     {
         g_pa_threaded_mainloop_unlock(mainloop);
