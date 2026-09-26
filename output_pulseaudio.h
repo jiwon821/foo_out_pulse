@@ -49,6 +49,9 @@ public:
         p_ready = update_v2() > 0;
     }
 
+    void write(const audio_chunk& p_data);
+    t_size can_write_samples();
+
     // "Called after seeking"
     void flush();
     // "returns 0 if the output isn't ready to receive any new data, otherwise an advisory
@@ -139,41 +142,21 @@ private:
     bool draining;
     bool drained;
 
-
     // wrapper for connecting the pulseaudio context, returns true on success
     bool context_connect();
 
     // wrapper for connecting the pulseaudio stream, returns true on success
     bool stream_connect(const pa_sample_spec*, const pa_buffer_attr*);
 
-
     // indicates whether we are seeking or not
     bool next_write_relative;
 
     double buffer_length;
-    pa_volume_t volume;
-
-    // writes stuff to pulseaudio stream
-    size_t write();
 
     void open(audio_chunk::spec_t const& p_spec);
 
     static bool load_pulse_dll();
-     
-    // logging functions
-    enum Severity
-    {
-        Error,
-        Info,
-    };
-
-    static void pa_console_error(const char*, int);
-
-    static void console_message(Severity, const char*, va_list);
-
     static void console_error(const char*, ...);
-
-    static void console_info(const char*, ...);
 };
 
 // needs to reside where the class definition is

@@ -3,8 +3,7 @@
 
 output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_dither, t_uint32 p_bitdepth)
       : buffer_length(p_buffer_length),
-        next_write_relative(false),
-        volume(0)
+        next_write_relative(false)
 {
     stream = NULL;
     context = NULL;
@@ -160,15 +159,94 @@ size_t output_pulse::update_v2()
         }
     }
 
+    m_can_write = this->can_write_samples();
+    
     if (m_incoming_ptr < m_incoming.get_size())
     {
-        m_can_write = write();
+        t_size delta = pfc::min_t(m_incoming.get_size() - m_incoming_ptr, m_can_write * m_incoming_spec.chanCount);
+        if (delta > 0)
+        {
+            PFC_ASSERT(!m_sent_force_play);
+            write(audio_chunk_temp_impl(m_incoming.get_ptr() + m_incoming_ptr, delta / m_incoming_spec.chanCount, m_incoming_spec.sampleRate, m_incoming_spec.chanCount, m_incoming_spec.chanMask));
+            m_incoming_ptr += delta;
+        }
+        
+       m_can_write -= delta / m_incoming_spec.chanCount;
     }
-    else if (m_incoming_ptr == m_incoming.get_size())
-    {
-        m_can_write = SIZE_MAX;
-    }
+    
     return m_can_write;
+}
+
+void output_pulse::write(const audio_chunk& p_data)
+{
+    const pa_timing_info* timing_info;
+    int64_t offset;
+
+    g_pa_threaded_mainloop_lock(mainloop);
+
+    if (next_write_relative)
+    {
+        if (!(timing_info = g_pa_stream_get_timing_info(stream)))
+        {
+            console::error("pa_stream_get_timing_info");
+            g_pa_threaded_mainloop_unlock(mainloop);
+            return;
+        }
+
+        offset = timing_info->read_index - (timing_info->read_index % (sizeof(audio_sample) * m_active_spec.chanCount));
+
+        if (g_pa_stream_write(stream, p_data.get_data(), p_data.get_data_size() * sizeof(audio_sample), NULL, offset, PA_SEEK_ABSOLUTE) < 0)
+        {
+            console::error("pa_stream_write");
+        }
+        else
+        {
+            next_write_relative = false;
+        }
+    }
+    else
+    {
+        if (g_pa_stream_write(stream, p_data.get_data(), p_data.get_data_size()  * sizeof(audio_sample), NULL, 0, PA_SEEK_RELATIVE) < 0)
+        {
+            console::error("pa_stream_write");
+        }
+    }
+
+    g_pa_threaded_mainloop_unlock(mainloop);
+}
+
+size_t output_pulse::can_write_samples()
+{
+    const pa_buffer_attr* buffer_attr;
+    size_t ret, requested_bytes;
+    
+    g_pa_threaded_mainloop_lock(mainloop);
+
+    if (next_write_relative)
+    {
+        if (!(buffer_attr = g_pa_stream_get_buffer_attr(stream)))
+        {
+            console_error("pa_stream_get_buffer_attr");
+            g_pa_threaded_mainloop_unlock(mainloop);
+            return 0;
+        }
+
+        ret = buffer_attr->tlength;
+    }
+    else
+    {
+        if ((requested_bytes = g_pa_stream_writable_size(stream)) == (size_t)-1)
+        {
+            console::error("pa_stream_writable_size");
+            g_pa_threaded_mainloop_unlock(mainloop);
+            return 0;
+        }
+
+        ret = requested_bytes;
+    }
+
+    g_pa_threaded_mainloop_unlock(mainloop);
+    return ret / m_incoming_spec.chanCount / sizeof(audio_sample); // TODO
 }
 
 void output_pulse::open(audio_chunk::spec_t const& p_spec)
@@ -212,7 +290,6 @@ void output_pulse::force_play()
 
     if (draining)
     {
-        // only one drain operation per stream may be issued at a time: https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#a8d263f188073f244b3820f3f50db4ba5
         return;
     }
 
@@ -296,109 +373,6 @@ output_v8::latencyInfo_t output_pulse::get_latency_info()
     return ret;
 }
 
-size_t output_pulse::write()
-{
-    const pa_timing_info* timing_info;
-    const pa_buffer_attr* buffer_attr;
-    int64_t write_index;
-    size_t cw_samples, delta;
-    int err;
-    // the number of bytes requested by the server that have not yet been written
-    size_t requested_bytes;
-
-    if (!stream || m_incoming_spec != m_active_spec) {
-      return 0;
-    }
-
-    // lockity lock
-    g_pa_threaded_mainloop_lock(mainloop);
-
-    // if we are seeking...
-    if (next_write_relative) {
-        // need this to get the "current read index into the playback buffer in bytes": https://www.freedesktop.org/software/pulseaudio/doxygen/structpa__timing__info.html#a5e04baf968cc1d53a7795a58b2e4f788
-        if (!(timing_info = g_pa_stream_get_timing_info(stream)))
-        {
-            console_error("pa_stream_get_timing_info");
-            g_pa_threaded_mainloop_unlock(mainloop);
-            return 0;
-        }
-
-        // "Return the per-stream server-side buffer metrics of the stream": https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#a9a3c3e78eafb28cce3a16cef2b68a385 
-        if (!(buffer_attr = g_pa_stream_get_buffer_attr(stream)))
-        {
-            console_error("pa_stream_get_buffer_attr");
-            g_pa_threaded_mainloop_unlock(mainloop);
-            return 0;
-        }
-
-        // calculate our "write index". I wonder what the magic number 4 is. at least it's sizeof(audio_sample)
-        write_index = timing_info->read_index - (timing_info->read_index % (sizeof(audio_sample) * m_active_spec.chanCount));
-        // sample count? is the "target length of the buffer" divided by the size of audio sample. makes sense
-        cw_samples = buffer_attr->tlength / sizeof(audio_sample);
-        // delta is the minimum of remaining buffer and audio samples
-        delta = pfc::min_t(m_incoming.get_size() - m_incoming_ptr, cw_samples);
-
-        // thus, if we are not at the end and we have samples, we should write them
-        if (delta > 0)
-        {
-            // right, so this differs with the other case by having seek mode set to absolute: https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#a4fc69dec0cc202fcc174125dc88dada7
-            // so we write to our stream at the pointer position the size of our data, and absolute seek at the write index
-            err = g_pa_stream_write(stream, m_incoming.get_ptr() + m_incoming_ptr, delta * sizeof(audio_sample), NULL, write_index, PA_SEEK_ABSOLUTE);
-            if (err)
-            {
-                pa_console_error("pa_stream_write", err);
-                g_pa_threaded_mainloop_unlock(mainloop);
-                // and returns the remaining sample count without channel information
-                return (cw_samples - delta) / m_incoming_spec.chanCount;
-            }
-            else
-            {
-                // on success we put our next write to non_relative and advance our pointer by how many samples we have written
-                next_write_relative = false;
-                m_incoming_ptr += delta;
-            }
-        }
-
-        g_pa_threaded_mainloop_unlock(mainloop);
-
-        // and we return the same stuff
-        return (cw_samples - delta) / m_incoming_spec.chanCount;
-    }
-    else
-    {
-        // "Return the number of bytes requested by the server that have not yet been written.": https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#a8927ec9a2876cf258cf1ffdb154b0362
-        if ((requested_bytes = g_pa_stream_writable_size(stream)) == (size_t)-1)
-        {
-            console_error("pa_stream_writable_size");
-            return 0;
-        }
-
-        // here our sample count is the number of bytes divided by sample size
-        cw_samples = requested_bytes / sizeof(audio_sample);
-        // and our delta is the same
-        delta = pfc::min_t(m_incoming.get_size() - m_incoming_ptr, cw_samples);
-
-        if (delta > 0)
-        {
-            // fairly similar, except write at seek offset 0 with relative seek mode
-            err = g_pa_stream_write(stream, m_incoming.get_ptr() + m_incoming_ptr, delta * sizeof(audio_sample), NULL, 0, PA_SEEK_RELATIVE);
-            if (err < 0)
-            {
-                pa_console_error("g_pa_stream_write", err);
-                g_pa_threaded_mainloop_unlock(mainloop);
-                // returning 0 here means we are not yet ready to receive any data
-                return 0;
-            }
-            else
-            {
-                m_incoming_ptr += delta;
-            }
-        }
-
-        g_pa_threaded_mainloop_unlock(mainloop);
-        return (cw_samples - delta) / m_incoming_spec.chanCount;
-    }
-}
 
 bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr* attr)
 {
@@ -443,57 +417,21 @@ bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr
     return true;
 }
 
-void output_pulse::pa_console_error(const char *name, int err)
-{
-    const char* s_err;
-
-    if (s_err = g_pa_strerror(err))
-    {
-        console_error("%s: %s", name, s_err);
-    }
-    else
-    {
-        console_error("%s: unknown error", name);
-    }
-}
-
-void output_pulse::console_message(Severity severity, const char* format, va_list args)
+void output_pulse::console_error(const char* format, ...)
 {
     const size_t buffer_size = 2048;
     char buffer[buffer_size];
+    va_list args;
 
+    va_start(args, format);
     if (vsnprintf_s(buffer, buffer_size, format, args) < 0)
     {
         console::error("vsnprintf_s: unknown error");
     }
     else
     {
-        switch (severity)
-        {
-        case Error:
-            console::error(buffer);
-            break;
-        default:
-            // this catches Info so no need to handle that separately
-            console::info(buffer);
-            break;
-        }
+       console::error(buffer);
     }
-}
-
-void output_pulse::console_error(const char* format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    console_message(Error, format, args);
-    va_end(args);
-}
-
-void output_pulse::console_info(const char* format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    console_message(Info, format, args);
     va_end(args);
 }
 
