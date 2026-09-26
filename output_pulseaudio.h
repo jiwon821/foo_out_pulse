@@ -155,7 +155,6 @@ private:
     void open(audio_chunk::spec_t const& p_spec);
 
     static bool load_pulse_dll();
-    static void console_error(const char*, ...);
 
     void process_samples(const audio_chunk& p_chunk);
     size_t process_samples_v2(const audio_chunk&);

@@ -91,28 +91,20 @@ output_pulse::~output_pulse()
             g_pa_context_unref(context);
         }
         g_pa_threaded_mainloop_unlock(mainloop);
-
         g_pa_threaded_mainloop_stop(mainloop);
-        Sleep(100);  // _stop() doesn't seem to block until it's actually safe to
-                    // free the mainloop?
         g_pa_threaded_mainloop_free(mainloop);
     }
 }
 
 void output_pulse::pause(bool p_state)
 {
-    pa_operation *operation;
-
+    pa_operation *op;
     if (stream)
     {
         g_pa_threaded_mainloop_lock(mainloop);
-
-        // cork means pause in pulseaudio https://freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#a14e698233ac2d246646651955ab0ec7b
-        if (operation = g_pa_stream_cork(stream, p_state, NULL, NULL))
-        {
-            g_pa_operation_unref(operation);
+        if (op = g_pa_stream_cork(stream, p_state, NULL, NULL)) {
+            g_pa_operation_unref(op);
         }
-
         g_pa_threaded_mainloop_unlock(mainloop);
     }
 }
@@ -215,7 +207,7 @@ size_t output_pulse::can_write_samples()
     {
         if (!(buffer_attr = g_pa_stream_get_buffer_attr(stream)))
         {
-            console_error("pa_stream_get_buffer_attr");
+            console::error("pa_stream_get_buffer_attr");
             g_pa_threaded_mainloop_unlock(mainloop);
             return 0;
         }
@@ -355,7 +347,7 @@ output_v8::latencyInfo_t output_pulse::get_latency_info()
             }
             else
             {
-                console_error("pa_stream_get_latency");
+                console::error("pa_stream_get_latency");
             }
         }
     }
@@ -379,7 +371,7 @@ bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr
 
     if (!(stream = g_pa_stream_new(context, "Audio", ss, p_map)))
     {
-        console_error("pa_stream_new");
+        console::error("pa_stream_new");
         return false;
     }
 
@@ -389,7 +381,7 @@ bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr
     // returns zero on success: https://freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#ab9544f6677af133fbe81bf8a21eb489c
     if (g_pa_stream_connect_playback(stream, NULL, attr, flags, NULL, NULL) != 0)
     {
-        console_error("pa_stream_connect_playback");
+        console::error("pa_stream_connect_playback");
         return false;
     }
 
@@ -397,31 +389,13 @@ bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr
     {
         if (state == PA_STREAM_FAILED || state == PA_STREAM_TERMINATED)
         {
-            console_error("pa_stream_get_state");
+            console::error("pa_stream_get_state");
             return false;
         }
         g_pa_threaded_mainloop_wait(mainloop);
     }
 
     return true;
-}
-
-void output_pulse::console_error(const char* format, ...)
-{
-    const size_t buffer_size = 2048;
-    char buffer[buffer_size];
-    va_list args;
-
-    va_start(args, format);
-    if (vsnprintf_s(buffer, buffer_size, format, args) < 0)
-    {
-        console::error("vsnprintf_s: unknown error");
-    }
-    else
-    {
-       console::error(buffer);
-    }
-    va_end(args);
 }
 
 bool output_pulse::load_pulse_dll()
@@ -435,7 +409,7 @@ bool output_pulse::load_pulse_dll()
 
     if (!g_pa_load(libpulse_dll_path.str()))
     {
-        console_error("Could not load libpulse-0.dll");
+        console::error("Could not load libpulse-0.dll");
         return false;
     }
     
