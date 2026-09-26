@@ -39,13 +39,18 @@ public:
 
     latencyInfo_t get_latency_info();
 
-    void volume_set(double);
-    // "Called after seeking"
-    void flush();
+    void volume_set(double p_val)
+    {
+        // Zero use for this, maybe reimplement later
+    }
+
     void update(bool& p_ready)
     {
         p_ready = update_v2() > 0;
     }
+
+    // "Called after seeking"
+    void flush();
     // "returns 0 if the output isn't ready to receive any new data, otherwise an advisory
     // number of samples - at the current stream format - that the output expects to take now"
     size_t update_v2();
@@ -82,34 +87,48 @@ private:
     pa_stream* stream;
     pa_threaded_mainloop* mainloop;
 
-    // context callbacks
-    static void context_state_cb(pa_context*, void*);
+    static void context_state_cb(pa_context* ctx, void* userdata)
+    {
+        pa_threaded_mainloop* ml = (pa_threaded_mainloop*)userdata;
+        switch (g_pa_context_get_state(ctx))
+        {
+        case PA_CONTEXT_FAILED:
+            console::error("PA_CONTEXT_FAILED");
+            stop();
+        case PA_CONTEXT_READY:
+        case PA_CONTEXT_TERMINATED:
+            g_pa_threaded_mainloop_signal(ml, 0);
+        }
+    }
 
-    static void context_subscribe_cb(pa_context*, pa_subscription_event_type_t, uint32_t, void*);
+    static void stream_drained_cb(pa_stream* s, int success, void* userdata)
+    {
+        output_pulse* o = (output_pulse*)userdata;
+        o->draining = false;
+        o->drained = true;
+    }
 
-    // stream callbacks; define simple ones simply here
-    static void stream_drained_cb(pa_stream*, int, void*);
-
-    static void stream_state_cb(pa_stream*, void*);
+    static void stream_state_cb(pa_stream* s, void* userdata)
+    {
+        pa_threaded_mainloop* ml = (pa_threaded_mainloop*)userdata;
+        switch (g_pa_stream_get_state(s))
+        {
+        case PA_STREAM_FAILED:
+        case PA_STREAM_READY:
+        case PA_STREAM_TERMINATED:
+            g_pa_threaded_mainloop_signal(ml, 0);
+        }
+    }
 
     static void stream_success_cb(pa_stream* s, int success, void* userdata)
     {
-        g_pa_threaded_mainloop_signal((pa_threaded_mainloop*)userdata, 0);
+        pa_threaded_mainloop* ml = (pa_threaded_mainloop*)userdata;
+        g_pa_threaded_mainloop_signal(ml, 0);
     }
 
-    static void stream_underflow_cb(pa_stream*, void*);
-
-    static void stream_write_cb(pa_stream* p, size_t nbytes, void* userdata)
-    {
-        ((output_pulse*)userdata)->trigger_update.set_state(true);
-    }
-
-    // TODO: seems to be used just in set_volume
-    static void sink_input_info_cb(pa_context*, const pa_sink_input_info*, int, void*);
-
-    // stops playback, used only ever in error situations
     static void stop()
     {
+        service_ptr_t<playback_control> playback_control;
         fb2k::inMainThread([]()
         {
             playback_control::get()->stop();
@@ -133,8 +152,6 @@ private:
 
     double buffer_length;
     pa_volume_t volume;
-    pfc::event trigger_update;
-    service_ptr_t<playback_control> playback_control;
 
     // writes stuff to pulseaudio stream
     size_t write();

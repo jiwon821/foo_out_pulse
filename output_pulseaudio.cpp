@@ -44,7 +44,7 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
     }
 
     // notifies context_state_cb when the server connection is established below
-    g_pa_context_set_state_callback(context, context_state_cb, this);
+    g_pa_context_set_state_callback(context, context_state_cb, mainloop);
 
     if (!context_connect())
     {
@@ -59,15 +59,12 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
     }
 
     g_pa_threaded_mainloop_unlock(mainloop);
-
-    trigger_update.create(true, true);
 }
 
 bool output_pulse::context_connect()
 {
     pfc::string8 server_string;
     pa_context_state_t state;
-    pa_operation *operation;
 
     // read server connection string from settings
     cfg_pulseaudio_server.get(server_string);
@@ -91,16 +88,6 @@ bool output_pulse::context_connect()
         g_pa_threaded_mainloop_wait(mainloop);
     }
 
-    // subscribe to event notifications: https://www.freedesktop.org/software/pulseaudio/doxygen/subscribe_8h.html#abe684246fd5cb640b0199bcfe7f801b0
-    if (operation = g_pa_context_subscribe(context, PA_SUBSCRIPTION_MASK_SINK_INPUT, NULL, NULL))
-    {
-        g_pa_operation_unref(operation);
-    }
-
-    // call context_subscribe_callback on events: https://www.freedesktop.org/software/pulseaudio/doxygen/subscribe_8h.html#a55281f798863e7b37594d347be7ad98c
-    g_pa_context_set_subscribe_callback(context, context_subscribe_cb, this);
-
-    console_info("pa_context_connect success");
     return true;
 }
 
@@ -112,7 +99,6 @@ output_pulse::~output_pulse()
         if (context)
         {
             g_pa_context_disconnect(context);
-            g_pa_context_set_event_callback(context, NULL, NULL);
             g_pa_context_set_state_callback(context, NULL, NULL);
             g_pa_context_unref(context);
         }
@@ -143,41 +129,11 @@ void output_pulse::pause(bool p_state)
     }
 }
 
-void output_pulse::volume_set(double p_val)
-{
-    if (!stream)
-    {
-        return;
-    }
-
-    pa_volume_t new_volume = g_pa_sw_volume_from_dB(p_val);
-    if (new_volume != volume) {
-    volume = new_volume;
-    uint32_t index = g_pa_stream_get_index(stream);
-    pa_cvolume cvolume;
-    g_pa_cvolume_init(&cvolume);
-    cvolume.channels = m_active_spec.chanCount;
-    g_pa_cvolume_set(&cvolume, m_active_spec.chanCount, volume);
-
-    g_pa_threaded_mainloop_lock(mainloop);
-    pa_operation* op = g_pa_context_set_sink_input_volume(context, index, &cvolume, NULL, NULL);
-    if (op)
-    {
-        g_pa_operation_unref(op);
-    }
-    g_pa_threaded_mainloop_unlock(mainloop);
-    }
-}
-
 void output_pulse::flush()
 {
     m_incoming_ptr = 0;
     m_incoming.set_size(0);
-
-    // apparently at least next_write_relative is needed here
-    // well, of course it is, since it marks if we are seeking or not and flush() is called after seeking
     next_write_relative = true;
-    trigger_update.set_state(true);
 }
 
 size_t output_pulse::update_v2()
@@ -185,7 +141,6 @@ size_t output_pulse::update_v2()
     m_can_write = 0;
 
     //on_update(); // TODO
-    trigger_update.set_state(false);
 
     if (!m_incoming_spec.is_valid()) return SIZE_MAX;
 
@@ -236,8 +191,6 @@ void output_pulse::open(audio_chunk::spec_t const& p_spec)
     if (stream)
     {
         g_pa_stream_set_state_callback(stream, NULL, NULL);
-        g_pa_stream_set_underflow_callback(stream, NULL, NULL);
-        g_pa_stream_set_write_callback(stream, NULL, NULL);
         g_pa_stream_disconnect(stream);
         g_pa_stream_unref(stream);
         stream = NULL;
@@ -251,7 +204,6 @@ void output_pulse::open(audio_chunk::spec_t const& p_spec)
     }
 
     g_pa_threaded_mainloop_unlock(mainloop);
-    trigger_update.set_state(true);
 }
 
 void output_pulse::force_play()
@@ -342,74 +294,6 @@ output_v8::latencyInfo_t output_pulse::get_latency_info()
         }
     }
     return ret;
-}
-
-void output_pulse::context_subscribe_cb(pa_context* c, pa_subscription_event_type_t t, uint32_t idx, void* userdata)
-{
-    if ((pa_subscription_event_type)(t & PA_SUBSCRIPTION_EVENT_SINK_INPUT) == PA_SUBSCRIPTION_EVENT_SINK_INPUT)
-    {
-        output_pulse* output = (output_pulse*)userdata;
-        if (!(output->stream)) {
-            return;
-        }
-
-        if (g_pa_stream_get_index(output->stream) == idx)
-        {
-            g_pa_context_get_sink_input_info(output->context, idx, sink_input_info_cb, output);
-        }
-    }
-}
-
-void output_pulse::sink_input_info_cb(pa_context* c, const pa_sink_input_info* i, int eol, void* userdata)
-{
-    output_pulse* o = (output_pulse*)userdata;
-    if (!i || !o)
-    {
-        return;
-    }
-
-    if (g_pa_cvolume_valid(&i->volume) && o->volume != i->volume.values[0])
-    {
-        float volume_db = (float)g_pa_sw_volume_to_dB(i->volume.values[0]);
-        fb2k::inMainThread([volume_db]()
-        {
-            playback_control::get()->set_volume(volume_db);
-        });
-    }
-}
-
-void output_pulse::context_state_cb(pa_context* ctx, void* userdata)
-{
-    output_pulse* output = (output_pulse*)userdata;
-    std::stringstream s;
-    switch (g_pa_context_get_state(ctx))
-    {
-    case PA_CONTEXT_FAILED:
-        console_error("pa_context_get_state", g_pa_context_errno(ctx));
-        stop();
-    case PA_CONTEXT_READY:
-    case PA_CONTEXT_TERMINATED:
-        g_pa_threaded_mainloop_signal(output->mainloop, 0);
-    }
-}
-
-void output_pulse::stream_state_cb(pa_stream* s, void* userdata)
-{
-    pa_threaded_mainloop* ml = (pa_threaded_mainloop*)userdata;
-
-    switch (g_pa_stream_get_state(s))
-    {
-    case PA_STREAM_READY:
-    case PA_STREAM_FAILED:
-    case PA_STREAM_TERMINATED:
-        g_pa_threaded_mainloop_signal(ml, 0);
-    }
-}
-
-void output_pulse::stream_underflow_cb(pa_stream* s, void* userdata)
-{
-    output_pulse* o = (output_pulse*)userdata;
-    o->trigger_update.set_state(true);
 }
 
 size_t output_pulse::write()
@@ -516,14 +400,6 @@ size_t output_pulse::write()
     }
 }
 
-void output_pulse::stream_drained_cb(pa_stream* s, int success, void* userdata)
-{
-    output_pulse* o = (output_pulse*)userdata;
-    o->draining = false;
-    o->drained = true;
-    o->trigger_update.set_state(true);
-}
-
 bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr* attr)
 {
     pa_stream_flags_t flags;
@@ -546,8 +422,6 @@ bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr
 
     // set callbacks
     g_pa_stream_set_state_callback(stream, stream_state_cb, mainloop);
-    g_pa_stream_set_underflow_callback(stream, stream_underflow_cb, this);
-    g_pa_stream_set_write_callback(stream, stream_write_cb, this);
 
     // returns zero on success: https://freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#ab9544f6677af133fbe81bf8a21eb489c
     if (g_pa_stream_connect_playback(stream, NULL, attr, flags, NULL, NULL) != 0)
