@@ -44,6 +44,7 @@ public:
 
     latencyInfo_t get_latency_info();
 
+    void on_update() {}
     void volume_set(double p_val)
     {
         // Zero use for this, maybe reimplement later
@@ -63,8 +64,8 @@ public:
     // number of samples - at the current stream format - that the output expects to take now"
     size_t update_v2();
     // "Called when there's no more data to send, to prevent infinite waiting"
-    void force_play();
-
+    //void force_play();
+    void on_force_play();
     // pauses (true) or resumes (false) the stream depending on the parameter
     void pause(bool);
 
@@ -83,6 +84,9 @@ public:
     static bool g_is_high_latency() { return true; }
 
 private:
+    void send_force_play();
+    void force_play();
+
     // incoming samples and specs as specified in output.h
     pfc::array_t<audio_sample, pfc::alloc_fast_aggressive> m_incoming;
     size_t m_incoming_ptr, m_can_write;
@@ -158,6 +162,9 @@ private:
 
     static bool load_pulse_dll();
 
+    bool queue_empty() const { return m_incoming_ptr == m_incoming.get_size(); }
+    bool m_eos = false; // EOS issued by caller / no more data expected until a flush
+    bool m_sent_force_play = false; // set if sent on_force_play()
     void process_samples(const audio_chunk& p_chunk);
     size_t process_samples_v2(const audio_chunk&);
 };

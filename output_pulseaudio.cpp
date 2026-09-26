@@ -109,6 +109,17 @@ void output_pulse::pause(bool p_state)
     }
 }
 
+void output_pulse::force_play() {
+    if (m_eos) return;
+    m_eos = true;
+    if (queue_empty()) send_force_play();
+}
+void output_pulse::send_force_play() {
+    if (m_sent_force_play) return;
+    m_sent_force_play = true;
+    this->on_force_play();
+}
+
 void output_pulse::flush()
 {
     m_incoming_ptr = 0;
@@ -118,14 +129,16 @@ void output_pulse::flush()
 
 size_t output_pulse::update_v2()
 {
+    // Clear preemptively
     m_can_write = 0;
 
-    //on_update(); // TODO
+    on_update();
 
+    // No data yet, nothing to do, want data, can't signal how much because we don't know the format
     if (!m_incoming_spec.is_valid()) return SIZE_MAX;
 
-    if (m_incoming_spec != m_active_spec)
-    {
+    // First chunk in or format change
+    if (m_incoming_spec != m_active_spec) {
         if (drained || next_write_relative)
         {
             next_write_relative = false;
@@ -135,7 +148,8 @@ size_t output_pulse::update_v2()
         }
         else
         {
-            force_play(); // TODO
+            // Previous format still playing, accept no more data
+            this->send_force_play();
             return 0;
         }
     }
@@ -265,7 +279,7 @@ void output_pulse::open(audio_chunk::spec_t const& p_spec)
     g_pa_threaded_mainloop_unlock(mainloop);
 }
 
-void output_pulse::force_play()
+void output_pulse::on_force_play()
 {
     pa_operation *operation;
 
