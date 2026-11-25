@@ -260,7 +260,7 @@ void output_pulse::open(audio_chunk::spec_t const& p_spec)
         stop();
         return;
     }
-
+    m_active_spec = m_incoming_spec;
     g_pa_threaded_mainloop_unlock(mainloop);
 }
 
