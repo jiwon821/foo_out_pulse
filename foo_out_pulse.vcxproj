@@ -186,7 +186,9 @@ copy "$(TargetPath)" "%TARGET_DIR%"</Command>
 
 if not exist "%TARGET_DIR%" mkdir "%TARGET_DIR%"
 
-copy "$(TargetPath)" "%TARGET_DIR%"</Command>
+copy "$(TargetPath)" "%TARGET_DIR%"
+
+copy "$(TargetPath)" Z:\</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>Copying dll</Message>

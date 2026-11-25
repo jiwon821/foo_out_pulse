@@ -42,25 +42,25 @@ public:
     output_pulse(const GUID&, double, bool, t_uint32);
     ~output_pulse();
 
-    void on_update() { /* No-op for now */ }
+    void on_update() { }
     void write(const audio_chunk& p_data);
     t_size can_write_samples();
     t_size get_latency_samples();
-    //struct latencySamples_t { size_t soft, hard; }; // TODO
-    //latencySamples_t get_latency_samples_v2(); // TODO
+    // struct latencySamples_t { size_t soft, hard; }; // TODO
+    // latencySamples_t get_latency_samples_v2(); // TODO
     void on_flush();
+    void on_flush_changing_track() { on_flush(); }
     void open(audio_chunk::spec_t const& p_spec);
     void on_force_play();
     void pause(bool p_state);
-    void volume_set(double p_val) { /* Zero use for this, maybe reimplement later */ }
+    void volume_set(double p_val) { }
+    bool is_progressing() { return progressing; }
 
-    // output_entry method definition; enumerates pulseaudio devices
-    static void g_enum_devices(output_device_enum_callback&);
-
-    // additional output_entry method definitions
+    // output_entry implementation with output_factory_t<output_pulse>
+    static void g_enum_devices(output_device_enum_callback& p_callback);
     static GUID g_get_guid() { return guid_cfg_pulseaudio_output; }
     static const char* g_get_name() { return OUTPUT_NAME; }
-    static void g_advanced_settings_popup(HWND, POINT) {}
+    // static void g_advanced_settings_popup(HWND, POINT) { } // "Obsolete, do not use."
     static bool g_advanced_settings_query() { return false; }
     static bool g_needs_bitdepth_config() { return false; }
     static bool g_needs_dither_config() { return false; }
@@ -69,6 +69,29 @@ public:
     static bool g_is_high_latency() { return true; }
 
 private:
+    void flush();
+    void flush_changing_track();
+    void update(bool& p_ready);
+    size_t update_v2();
+    double get_latency();
+    latencyInfo_t get_latency_info();
+    void process_samples(const audio_chunk& p_chunk);
+    size_t process_samples_v2(const audio_chunk&);
+    void force_play();
+    void on_flush_internal();
+    void send_force_play();
+
+    bool queue_empty() const { return m_incoming_ptr == m_incoming.get_size(); }
+
+    pfc::array_t<audio_sample, pfc::alloc_fast_aggressive> m_incoming;
+    size_t m_incoming_ptr = 0, m_can_write = 0;
+    audio_chunk::spec_t m_incoming_spec, m_active_spec;
+    bool m_eos = false; // EOS issued by caller / no more data expected until a flush
+    bool m_sent_force_play = false; // set if sent on_force_play()
+
+    // --- snib ---
+
+    bool progressing;
     pa_context* context;
     pa_stream* stream;
     pa_threaded_mainloop* mainloop;
@@ -77,6 +100,10 @@ private:
     bool next_write_relative;
     double buffer_length;
 
+    static void stream_started_cb(pa_stream* p, void* userdata)
+    {
+        ((output_pulse*)userdata)->progressing = true;
+    }
     static void context_state_cb(pa_context* ctx, void* userdata)
     {
         pa_threaded_mainloop* ml = (pa_threaded_mainloop*)userdata;
@@ -128,25 +155,7 @@ private:
 
     static bool load_pulse_dll();
 
-    latencyInfo_t get_latency_info();
 
-    // See output_impl.cpp for the stuff below
-    void flush();
-    void update(bool& p_ready);
-    size_t update_v2();
-    void process_samples(const audio_chunk& p_chunk);
-    size_t process_samples_v2(const audio_chunk&);
-    void force_play();
-    void on_flush_internal();
-    void send_force_play();
-
-    bool queue_empty() const { return m_incoming_ptr == m_incoming.get_size(); }
-
-    pfc::array_t<audio_sample, pfc::alloc_fast_aggressive> m_incoming;
-    size_t m_incoming_ptr = 0, m_can_write = 0;
-    audio_chunk::spec_t m_incoming_spec, m_active_spec;
-    bool m_eos = false; // EOS issued by caller / no more data expected until a flush
-    bool m_sent_force_play = false; // set if sent on_force_play()
 };
 
 static output_factory_t<output_pulse> g_output_pulse_factory;
