@@ -233,6 +233,7 @@ void output_pulse::open(audio_chunk::spec_t const& p_spec)
     
     if (stream)
     {
+        log_info("open(): closing active stream");
         g_pa_stream_set_started_callback(stream, NULL, NULL);
         g_pa_stream_set_state_callback(stream, NULL, NULL);
         g_pa_stream_disconnect(stream);

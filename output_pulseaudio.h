@@ -22,6 +22,22 @@
 #define APPLICATION_ICON_NAME APPLICATION_NAME
 #define OUTPUT_NAME "PulseAudio"
 
+#ifdef _DEBUG
+#define BUFFER_SIZE 4096
+#define BUFFER_PREFIX "foo_out_pulse: "
+#define log_info(fmt, ...) \
+    do { \
+        char buffer[BUFFER_SIZE]; \
+        size_t n = strlen(BUFFER_PREFIX); \
+        memset(buffer, 0, sizeof(buffer)); \
+        strcpy_s(buffer, BUFFER_SIZE, "foo_out_pulse: "); \
+        sprintf_s(buffer + n, BUFFER_SIZE - n, fmt, __VA_ARGS__); \
+        console::info(buffer); \
+    } while (0)
+#else
+#define log_info(fmt, ...)
+#endif
+
 static const GUID guid_cfg_pulseaudio_branch
     = {0x61979096, 0x1158, 0x4860, {0xb0, 0xcc, 0x6f, 0x53, 0x0f, 0x35, 0xaf, 0x26} };
 static const GUID guid_cfg_pulseaudio_device
