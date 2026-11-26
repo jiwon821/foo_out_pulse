@@ -48,7 +48,7 @@ public:
     t_size get_latency_samples();
     // struct latencySamples_t { size_t soft, hard; }; // TODO
     // latencySamples_t get_latency_samples_v2(); // TODO
-    void on_flush();
+    void on_flush() { next_write_relative = true; }
     void on_flush_changing_track() { on_flush(); }
     void open(audio_chunk::spec_t const& p_spec);
     void on_force_play();
@@ -89,12 +89,13 @@ private:
     bool m_eos = false; // EOS issued by caller / no more data expected until a flush
     bool m_sent_force_play = false; // set if sent on_force_play()
 
+    pa_context* context;
+    pa_threaded_mainloop* mainloop;
+    pa_stream* stream;
+
     // --- snib ---
 
     bool progressing;
-    pa_context* context;
-    pa_stream* stream;
-    pa_threaded_mainloop* mainloop;
     bool draining;
     bool drained;
     bool next_write_relative;

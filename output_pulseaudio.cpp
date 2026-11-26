@@ -97,23 +97,7 @@ output_pulse::~output_pulse()
     }
 }
 
-void output_pulse::pause(bool p_state)
-{
-    pa_operation *op;
-    if (stream)
-    {
-        g_pa_threaded_mainloop_lock(mainloop);
-        if (op = g_pa_stream_cork(stream, p_state, NULL, NULL)) {
-            g_pa_operation_unref(op);
-        }
-        g_pa_threaded_mainloop_unlock(mainloop);
-    }
-}
 
-void output_pulse::on_flush()
-{
-    next_write_relative = true; // TODO
-}
 
 t_size output_pulse::get_latency_samples()
 {
@@ -269,7 +253,7 @@ void output_pulse::open(audio_chunk::spec_t const& p_spec)
 
 void output_pulse::on_force_play()
 {
-    pa_operation *operation;
+    pa_operation *op;
 
     if (draining)
     {
@@ -284,9 +268,9 @@ void output_pulse::on_force_play()
         drained = false;
 
         // drain the stream, notify after all audio has been played and playback buffer is empty
-        if (operation = g_pa_stream_drain(stream, stream_drained_cb, this))
+        if (op = g_pa_stream_drain(stream, stream_drained_cb, this))
         {
-            g_pa_operation_unref(operation);
+            g_pa_operation_unref(op);
         }
         else
         {
@@ -296,9 +280,9 @@ void output_pulse::on_force_play()
         }
 
         // immediately start playback on the stream: https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#ae17a3a9f6ee0403c4665f6f4ce02ca3c
-        if (operation = g_pa_stream_trigger(stream, NULL, NULL))
+        if (op = g_pa_stream_trigger(stream, NULL, NULL))
         {
-            g_pa_operation_unref(operation);
+            g_pa_operation_unref(op);
         }
 
         g_pa_threaded_mainloop_unlock(mainloop);
@@ -427,5 +411,19 @@ void output_pulse::g_enum_devices(output_device_enum_callback& p_callback)
     if (load_pulse_dll())
     {
         p_callback.on_device(guid_cfg_pulseaudio_device, server, server.length());
+    }
+}
+
+void output_pulse::pause(bool p_state)
+{
+    pa_operation* op;
+    if (stream)
+    {
+        g_pa_threaded_mainloop_lock(mainloop);
+        if (op = g_pa_stream_cork(stream, p_state, NULL, NULL))
+        {
+            g_pa_operation_unref(op);
+        }
+        g_pa_threaded_mainloop_unlock(mainloop);
     }
 }
