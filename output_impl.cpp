@@ -123,7 +123,7 @@ void output_pulse::send_force_play() {
 	this->on_force_play();
 }
 
-output_pulse::latencyInfo_t output_pulse::get_latency_info() {
+output::latencyInfo_t output_pulse::get_latency_info() {
 	latencyInfo_t ret = {};
 	if (m_incoming_spec.is_valid()) {
 		ret.latency += audio_math::samples_to_time((m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.chanCount, m_incoming_spec.sampleRate);
