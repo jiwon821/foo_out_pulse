@@ -313,59 +313,11 @@ void output_pulse::on_force_play()
     }
 }
 
-output_v8::latencyInfo_t output_pulse::get_latency_info()
-{
-    double latency;
-    latencyInfo_t ret = {};
-    pa_usec_t latency_usec;
-    pa_operation* op;
-
-    if (m_incoming_spec.is_valid())
-    {
-        latency = audio_math::samples_to_time((m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.chanCount, m_incoming_spec.sampleRate);
-        ret.latency += latency;
-        log_info("get_latency_info(): added %lf seconds of latency from m_incoming_spec", latency);
-    }
-
-    if (m_active_spec.is_valid() && stream && !drained)
-    {
-        g_pa_stream_get_timing_info(stream);
-        if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
-        {
-            latency = latency_usec * 0.000001;
-            ret.latency += latency;
-            ret.hardQueued += ret.latency; // TODO
-            log_info("get_latency_info(): added %lf seconds of latency from stream", latency);
-        }
-        else
-        {
-            g_pa_threaded_mainloop_lock(mainloop);
-            if (op = g_pa_stream_update_timing_info(stream, stream_success_cb, mainloop))
-            {
-                while (g_pa_operation_get_state(op) == PA_OPERATION_RUNNING)
-                {
-                    g_pa_threaded_mainloop_wait(mainloop);
-                }
-                g_pa_operation_unref(op);
-            }
-            g_pa_threaded_mainloop_unlock(mainloop);
-
-            if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
-            {
-                latency = latency_usec * 0.000001;
-                ret.latency += latency;
-                ret.hardQueued += ret.latency; // TODO
-                log_info("get_latency_info(): added %lf seconds of latency from stream after timing info update", latency);
-            }
-            else
-            {
-                console::error("pa_stream_get_latency");
-            }
-        }
-    }
-    return ret;
+output_pulse::latencySamples_t output_pulse::get_latency_samples_v2() {
+    auto s = this->get_latency_samples();
+    // return { .soft = s, .hard = is_progressing() ? s : 0 };
+    return { .soft = s, .hard = s }; // TODO
 }
-
 
 bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr* attr)
 {

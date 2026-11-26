@@ -123,7 +123,15 @@ void output_pulse::send_force_play() {
 	this->on_force_play();
 }
 
-output_pulse::latencySamples_t output_pulse::get_latency_samples_v2() {
-	auto s = this->get_latency_samples();
-	return { .soft = s, .hard = is_progressing() ? s : 0 };
+output::latencyInfo_t output_pulse::get_latency_info() {
+	latencyInfo_t ret = {};
+	if (m_incoming_spec.is_valid()) {
+		ret.latency += audio_math::samples_to_time((m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.chanCount, m_incoming_spec.sampleRate);
+	}
+	if (m_active_spec.is_valid()) {
+		auto s = this->get_latency_samples_v2();
+		ret.latency += audio_math::samples_to_time(s.soft, m_active_spec.sampleRate);
+		ret.hardQueued += audio_math::samples_to_time(s.hard, m_active_spec.sampleRate);
+	}
+	return ret;
 }
