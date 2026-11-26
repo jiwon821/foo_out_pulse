@@ -9,7 +9,6 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
         mainloop(NULL),
         draining(false),
         drained(false),
-        progressing(false),
         m_incoming_ptr(0)
 {
     pa_context_state_t state;
@@ -251,13 +250,11 @@ void output_pulse::open(audio_chunk::spec_t const& p_spec)
     if (stream)
     {
         log_info("open(): closing active stream");
-        g_pa_stream_set_started_callback(stream, NULL, NULL);
         g_pa_stream_set_state_callback(stream, NULL, NULL);
         g_pa_stream_disconnect(stream);
         g_pa_stream_unref(stream);
         stream = NULL;
         drained = false;
-        progressing = false;
     }
     
     if (!stream_connect(&ss, &attr))
@@ -391,7 +388,6 @@ bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr
     }
 
     // set callbacks
-    g_pa_stream_set_started_callback(stream, stream_started_cb, this);
     g_pa_stream_set_state_callback(stream, stream_state_cb, mainloop);
 
     // returns zero on success: https://freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#ab9544f6677af133fbe81bf8a21eb489c

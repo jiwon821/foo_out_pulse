@@ -62,17 +62,6 @@ size_t output_pulse::update_v2() {
 	return m_can_write;
 }
 
-double output_pulse::get_latency() {
-	double ret = 0;
-	if (m_incoming_spec.is_valid()) {
-		ret += audio_math::samples_to_time((m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.chanCount, m_incoming_spec.sampleRate);
-	}
-	if (m_active_spec.is_valid()) {
-		ret += audio_math::samples_to_time(get_latency_samples(), m_active_spec.sampleRate);
-	}
-	return ret;
-}
-
 static void spec_sanity(audio_chunk::spec_t const& spec) {
 	if (!spec.is_valid()) pfc::throw_exception_with_message< exception_io_data >("Invalid audio stream specifications");
 }
@@ -132,4 +121,9 @@ void output_pulse::send_force_play() {
 	if (m_sent_force_play) return;
 	m_sent_force_play = true;
 	this->on_force_play();
+}
+
+output_pulse::latencySamples_t output_pulse::get_latency_samples_v2() {
+	auto s = this->get_latency_samples();
+	return { .soft = s, .hard = is_progressing() ? s : 0 };
 }
