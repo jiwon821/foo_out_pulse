@@ -313,14 +313,10 @@ void output_pulse::on_force_play()
     }
 }
 
-output_pulse::latencyInfo_t output_pulse::get_latency_info()
-{
-    latencyInfo_t ret = {};
-    t_size samples;
-    samples = get_latency_samples();
-    ret.latency += audio_math::samples_to_time(samples, m_incoming_spec.sampleRate);
-    ret.hardQueued += ret.latency; // TODO
-    return ret;
+output_pulse::latencySamples_t output_pulse::get_latency_samples_v2() {
+    auto s = this->get_latency_samples();
+    // return { .soft = s, .hard = is_progressing() ? s : 0 };
+    return { .soft = s, .hard = s }; // TODO
 }
 
 bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr* attr)
