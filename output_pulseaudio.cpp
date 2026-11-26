@@ -9,7 +9,6 @@ output_pulse::output_pulse(const GUID& p_device, double p_buffer_length, bool p_
         mainloop(NULL),
         draining(false),
         drained(false),
-        progressing(false),
         m_incoming_ptr(0)
 {
     pa_context_state_t state;
@@ -97,61 +96,62 @@ output_pulse::~output_pulse()
     }
 }
 
-void output_pulse::pause(bool p_state)
-{
-    pa_operation *op;
-    if (stream)
-    {
-        g_pa_threaded_mainloop_lock(mainloop);
-        if (op = g_pa_stream_cork(stream, p_state, NULL, NULL)) {
-            g_pa_operation_unref(op);
-        }
-        g_pa_threaded_mainloop_unlock(mainloop);
-    }
-}
 
-void output_pulse::on_flush()
-{
-    next_write_relative = true; // TODO
-}
 
 t_size output_pulse::get_latency_samples()
 {
+    uint64_t samples;
     int64_t ret = 0;
     pa_usec_t latency_usec;
     pa_operation* op;
 
-    if (m_incoming_spec.is_valid()) {
-        ret += (m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.chanCount;
+    if (m_incoming_spec.is_valid())
+    {
+        samples = (m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.chanCount;
+        ret += samples;
+        log_info("get_latency_samples(): added %" PRIu64 " samples of latency from m_incoming_spec", samples);
     }
 
-    if (m_active_spec.is_valid() && stream && !drained) {
-
-        g_pa_stream_get_timing_info(stream);
-        if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
+    if (m_active_spec.is_valid())
+    {
+        log_info("get_latency_samples(): m_active_spec is valid");
+        if (stream)
         {
-            ret += audio_math::time_to_samples(latency_usec * 0.000001, m_active_spec.sampleRate);
-        }
-        else
-        {
-            g_pa_threaded_mainloop_lock(mainloop);
-            if (op = g_pa_stream_update_timing_info(stream, stream_success_cb, mainloop))
+            log_info("get_latency_samples(): stream is active");
+            if (!drained)
             {
-                while (g_pa_operation_get_state(op) == PA_OPERATION_RUNNING)
+                log_info("get_latency_samples(): stream has not been drained");
+                g_pa_stream_get_timing_info(stream);
+                if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
                 {
-                    g_pa_threaded_mainloop_wait(mainloop);
+                    samples = audio_math::time_to_samples(latency_usec * 0.000001, m_active_spec.sampleRate);
+                    ret += samples;
+                    log_info("get_latency_samples(): added %" PRIu64 " samples of latency from stream", samples);
                 }
-                g_pa_operation_unref(op);
-            }
-            g_pa_threaded_mainloop_unlock(mainloop);
+                else
+                {
+                    g_pa_threaded_mainloop_lock(mainloop);
+                    if (op = g_pa_stream_update_timing_info(stream, stream_success_cb, mainloop))
+                    {
+                        while (g_pa_operation_get_state(op) == PA_OPERATION_RUNNING)
+                        {
+                            g_pa_threaded_mainloop_wait(mainloop);
+                        }
+                        g_pa_operation_unref(op);
+                    }
+                    g_pa_threaded_mainloop_unlock(mainloop);
 
-            if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
-            {
-                ret += audio_math::time_to_samples(latency_usec * 0.000001, m_active_spec.sampleRate);
-            }
-            else
-            {
-                console::error("pa_stream_get_latency");
+                    if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
+                    {
+                        samples = audio_math::time_to_samples(latency_usec * 0.000001, m_active_spec.sampleRate);
+                        ret += samples;
+                        log_info("get_latency_samples(): added %" PRIu64 " samples of latency from stream after timing info update", samples);
+                    }
+                    else
+                    {
+                        console::error("pa_stream_get_latency");
+                    }
+                }
             }
         }
     }
@@ -249,12 +249,12 @@ void output_pulse::open(audio_chunk::spec_t const& p_spec)
     
     if (stream)
     {
-        g_pa_stream_set_started_callback(stream, NULL, NULL);
+        log_info("open(): closing active stream");
         g_pa_stream_set_state_callback(stream, NULL, NULL);
         g_pa_stream_disconnect(stream);
         g_pa_stream_unref(stream);
         stream = NULL;
-        progressing = false;
+        drained = false;
     }
     
     if (!stream_connect(&ss, &attr))
@@ -269,24 +269,26 @@ void output_pulse::open(audio_chunk::spec_t const& p_spec)
 
 void output_pulse::on_force_play()
 {
-    pa_operation *operation;
+    pa_operation *op;
 
     if (draining)
     {
+        log_info("on_force_play(): drain operation already in process");
         return;
     }
 
     if (stream)
     {
+        log_info("on_force_play(): stream is active");
         g_pa_threaded_mainloop_lock(mainloop);
 
         draining = true;
         drained = false;
 
         // drain the stream, notify after all audio has been played and playback buffer is empty
-        if (operation = g_pa_stream_drain(stream, stream_drained_cb, this))
+        if (op = g_pa_stream_drain(stream, stream_drained_cb, this))
         {
-            g_pa_operation_unref(operation);
+            g_pa_operation_unref(op);
         }
         else
         {
@@ -296,9 +298,9 @@ void output_pulse::on_force_play()
         }
 
         // immediately start playback on the stream: https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#ae17a3a9f6ee0403c4665f6f4ce02ca3c
-        if (operation = g_pa_stream_trigger(stream, NULL, NULL))
+        if (op = g_pa_stream_trigger(stream, NULL, NULL))
         {
-            g_pa_operation_unref(operation);
+            g_pa_operation_unref(op);
         }
 
         g_pa_threaded_mainloop_unlock(mainloop);
@@ -313,21 +315,27 @@ void output_pulse::on_force_play()
 
 output_v8::latencyInfo_t output_pulse::get_latency_info()
 {
+    double latency;
     latencyInfo_t ret = {};
     pa_usec_t latency_usec;
     pa_operation* op;
 
-    if (m_incoming_spec.is_valid()) {
-        ret.latency += audio_math::samples_to_time((m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.chanCount, m_incoming_spec.sampleRate);
+    if (m_incoming_spec.is_valid())
+    {
+        latency = audio_math::samples_to_time((m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.chanCount, m_incoming_spec.sampleRate);
+        ret.latency += latency;
+        log_info("get_latency_info(): added %lf seconds of latency from m_incoming_spec", latency);
     }
 
-    if (m_active_spec.is_valid() && stream && !drained) {
-        
+    if (m_active_spec.is_valid() && stream && !drained)
+    {
         g_pa_stream_get_timing_info(stream);
         if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
         {
-            ret.latency += (latency_usec * 0.000001);
+            latency = latency_usec * 0.000001;
+            ret.latency += latency;
             ret.hardQueued += ret.latency; // TODO
+            log_info("get_latency_info(): added %lf seconds of latency from stream", latency);
         }
         else
         {
@@ -344,8 +352,10 @@ output_v8::latencyInfo_t output_pulse::get_latency_info()
 
             if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
             {
-                ret.latency += (latency_usec * 0.000001);
+                latency = latency_usec * 0.000001;
+                ret.latency += latency;
                 ret.hardQueued += ret.latency; // TODO
+                log_info("get_latency_info(): added %lf seconds of latency from stream after timing info update", latency);
             }
             else
             {
@@ -378,7 +388,6 @@ bool output_pulse::stream_connect(const pa_sample_spec* ss, const pa_buffer_attr
     }
 
     // set callbacks
-    g_pa_stream_set_started_callback(stream, stream_started_cb, this);
     g_pa_stream_set_state_callback(stream, stream_state_cb, mainloop);
 
     // returns zero on success: https://freedesktop.org/software/pulseaudio/doxygen/stream_8h.html#ab9544f6677af133fbe81bf8a21eb489c
@@ -427,5 +436,19 @@ void output_pulse::g_enum_devices(output_device_enum_callback& p_callback)
     if (load_pulse_dll())
     {
         p_callback.on_device(guid_cfg_pulseaudio_device, server, server.length());
+    }
+}
+
+void output_pulse::pause(bool p_state)
+{
+    pa_operation* op;
+    if (stream)
+    {
+        g_pa_threaded_mainloop_lock(mainloop);
+        if (op = g_pa_stream_cork(stream, p_state, NULL, NULL))
+        {
+            g_pa_operation_unref(op);
+        }
+        g_pa_threaded_mainloop_unlock(mainloop);
     }
 }

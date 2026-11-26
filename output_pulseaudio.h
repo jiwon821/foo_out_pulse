@@ -22,6 +22,23 @@
 #define APPLICATION_ICON_NAME APPLICATION_NAME
 #define OUTPUT_NAME "PulseAudio"
 
+#define VERBOSE
+#ifdef VERBOSE
+#define BUFFER_SIZE 4096
+#define BUFFER_PREFIX "foo_out_pulse: "
+#define log_info(fmt, ...) \
+    do { \
+        char buffer[BUFFER_SIZE]; \
+        size_t n = strlen(BUFFER_PREFIX); \
+        memset(buffer, 0, sizeof(buffer)); \
+        strcpy_s(buffer, BUFFER_SIZE, "foo_out_pulse: "); \
+        sprintf_s(buffer + n, BUFFER_SIZE - n, fmt, __VA_ARGS__); \
+        console::info(buffer); \
+    } while (0)
+#else
+#define log_info(fmt, ...)
+#endif
+
 static const GUID guid_cfg_pulseaudio_branch
     = {0x61979096, 0x1158, 0x4860, {0xb0, 0xcc, 0x6f, 0x53, 0x0f, 0x35, 0xaf, 0x26} };
 static const GUID guid_cfg_pulseaudio_device
@@ -46,15 +63,14 @@ public:
     void write(const audio_chunk& p_data);
     t_size can_write_samples();
     t_size get_latency_samples();
-    // struct latencySamples_t { size_t soft, hard; }; // TODO
-    // latencySamples_t get_latency_samples_v2(); // TODO
-    void on_flush();
+    struct latencySamples_t { size_t soft, hard; };
+    latencySamples_t get_latency_samples_v2();
+    void on_flush() { next_write_relative = true; }
     void on_flush_changing_track() { on_flush(); }
     void open(audio_chunk::spec_t const& p_spec);
     void on_force_play();
     void pause(bool p_state);
     void volume_set(double p_val) { }
-    bool is_progressing() { return progressing; }
 
     // output_entry implementation with output_factory_t<output_pulse>
     static void g_enum_devices(output_device_enum_callback& p_callback);
@@ -73,7 +89,6 @@ private:
     void flush_changing_track();
     void update(bool& p_ready);
     size_t update_v2();
-    double get_latency();
     latencyInfo_t get_latency_info();
     void process_samples(const audio_chunk& p_chunk);
     size_t process_samples_v2(const audio_chunk&);
@@ -89,21 +104,17 @@ private:
     bool m_eos = false; // EOS issued by caller / no more data expected until a flush
     bool m_sent_force_play = false; // set if sent on_force_play()
 
+    pa_context* context;
+    pa_threaded_mainloop* mainloop;
+    pa_stream* stream;
+
     // --- snib ---
 
-    bool progressing;
-    pa_context* context;
-    pa_stream* stream;
-    pa_threaded_mainloop* mainloop;
     bool draining;
     bool drained;
     bool next_write_relative;
     double buffer_length;
 
-    static void stream_started_cb(pa_stream* p, void* userdata)
-    {
-        ((output_pulse*)userdata)->progressing = true;
-    }
     static void context_state_cb(pa_context* ctx, void* userdata)
     {
         pa_threaded_mainloop* ml = (pa_threaded_mainloop*)userdata;

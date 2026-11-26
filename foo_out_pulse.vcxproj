@@ -66,8 +66,6 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
     <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>
-    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(SolutionDir)$(Configuration)\$(ProjectName)\</OutDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(SolutionDir)$(Configuration)\$(ProjectName)\</IntDir>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</LinkIncremental>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</LinkIncremental>
@@ -95,9 +93,9 @@
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <TreatSpecificWarningsAsErrors>4715</TreatSpecificWarningsAsErrors>
-      <AdditionalIncludeDirectories>..;../..</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\libpulse;..\SDK-2026-10-01\foobar2000\SDK;..\SDK-2026-10-01\foobar2000;..\SDK-2026-10-01;..\WTL10_01_Release\Include</AdditionalIncludeDirectories>
       <FloatingPointModel>Fast</FloatingPointModel>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <ConformanceMode>true</ConformanceMode>
     </ClCompile>
     <Link>
@@ -107,12 +105,16 @@
       <DataExecutionPrevention>
       </DataExecutionPrevention>
       <TargetMachine>MachineX86</TargetMachine>
-      <AdditionalDependencies>../SDK-2022-08-10/foobar2000/shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>..\SDK-2026-10-01\foobar2000\shared\shared-$(Platform).lib</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>set TARGET_DIR="$(SolutionDir)..\foobar2000-$(Platform)\components"
+      <Command>set TARGET_DIR="$(SolutionDir)$(Platform)"
+
 if not exist "%TARGET_DIR%" mkdir "%TARGET_DIR%"
-copy "$(TargetPath)" "%TARGET_DIR%"</Command>
+
+copy "$(TargetPath)" "%TARGET_DIR%"
+
+copy "$(TargetPath)" Z:\</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>Copying dll</Message>
