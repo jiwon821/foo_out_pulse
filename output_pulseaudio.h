@@ -22,7 +22,8 @@
 #define APPLICATION_ICON_NAME APPLICATION_NAME
 #define OUTPUT_NAME "PulseAudio"
 
-#ifdef _DEBUG
+#define VERBOSE
+#ifdef VERBOSE
 #define BUFFER_SIZE 4096
 #define BUFFER_PREFIX "foo_out_pulse: "
 #define log_info(fmt, ...) \

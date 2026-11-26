@@ -101,41 +101,58 @@ output_pulse::~output_pulse()
 
 t_size output_pulse::get_latency_samples()
 {
+    uint64_t samples;
     int64_t ret = 0;
     pa_usec_t latency_usec;
     pa_operation* op;
 
-    if (m_incoming_spec.is_valid()) {
-        ret += (m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.chanCount;
+    if (m_incoming_spec.is_valid())
+    {
+        samples = (m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.chanCount;
+        ret += samples;
+        log_info("get_latency_samples(): added %" PRIu64 " samples of latency from m_incoming_spec", samples);
     }
 
-    if (m_active_spec.is_valid() && stream && !drained) {
-
-        g_pa_stream_get_timing_info(stream);
-        if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
+    if (m_active_spec.is_valid())
+    {
+        log_info("get_latency_samples(): m_active_spec is valid");
+        if (stream)
         {
-            ret += audio_math::time_to_samples(latency_usec * 0.000001, m_active_spec.sampleRate);
-        }
-        else
-        {
-            g_pa_threaded_mainloop_lock(mainloop);
-            if (op = g_pa_stream_update_timing_info(stream, stream_success_cb, mainloop))
+            log_info("get_latency_samples(): stream is active");
+            if (!drained)
             {
-                while (g_pa_operation_get_state(op) == PA_OPERATION_RUNNING)
+                log_info("get_latency_samples(): stream has not been drained");
+                g_pa_stream_get_timing_info(stream);
+                if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
                 {
-                    g_pa_threaded_mainloop_wait(mainloop);
+                    samples = audio_math::time_to_samples(latency_usec * 0.000001, m_active_spec.sampleRate);
+                    ret += samples;
+                    log_info("get_latency_samples(): added %" PRIu64 " samples of latency from stream", samples);
                 }
-                g_pa_operation_unref(op);
-            }
-            g_pa_threaded_mainloop_unlock(mainloop);
+                else
+                {
+                    g_pa_threaded_mainloop_lock(mainloop);
+                    if (op = g_pa_stream_update_timing_info(stream, stream_success_cb, mainloop))
+                    {
+                        while (g_pa_operation_get_state(op) == PA_OPERATION_RUNNING)
+                        {
+                            g_pa_threaded_mainloop_wait(mainloop);
+                        }
+                        g_pa_operation_unref(op);
+                    }
+                    g_pa_threaded_mainloop_unlock(mainloop);
 
-            if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
-            {
-                ret += audio_math::time_to_samples(latency_usec * 0.000001, m_active_spec.sampleRate);
-            }
-            else
-            {
-                console::error("pa_stream_get_latency");
+                    if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
+                    {
+                        samples = audio_math::time_to_samples(latency_usec * 0.000001, m_active_spec.sampleRate);
+                        ret += samples;
+                        log_info("get_latency_samples(): added %" PRIu64 " samples of latency from stream after timing info update", samples);
+                    }
+                    else
+                    {
+                        console::error("pa_stream_get_latency");
+                    }
+                }
             }
         }
     }
@@ -239,6 +256,7 @@ void output_pulse::open(audio_chunk::spec_t const& p_spec)
         g_pa_stream_disconnect(stream);
         g_pa_stream_unref(stream);
         stream = NULL;
+        drained = false;
         progressing = false;
     }
     
@@ -258,11 +276,13 @@ void output_pulse::on_force_play()
 
     if (draining)
     {
+        log_info("on_force_play(): drain operation already in process");
         return;
     }
 
     if (stream)
     {
+        log_info("on_force_play(): stream is active");
         g_pa_threaded_mainloop_lock(mainloop);
 
         draining = true;
@@ -298,21 +318,27 @@ void output_pulse::on_force_play()
 
 output_v8::latencyInfo_t output_pulse::get_latency_info()
 {
+    double latency;
     latencyInfo_t ret = {};
     pa_usec_t latency_usec;
     pa_operation* op;
 
-    if (m_incoming_spec.is_valid()) {
-        ret.latency += audio_math::samples_to_time((m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.chanCount, m_incoming_spec.sampleRate);
+    if (m_incoming_spec.is_valid())
+    {
+        latency = audio_math::samples_to_time((m_incoming.get_size() - m_incoming_ptr) / m_incoming_spec.chanCount, m_incoming_spec.sampleRate);
+        ret.latency += latency;
+        log_info("get_latency_info(): added %lf seconds of latency from m_incoming_spec", latency);
     }
 
-    if (m_active_spec.is_valid() && stream && !drained) {
-        
+    if (m_active_spec.is_valid() && stream && !drained)
+    {
         g_pa_stream_get_timing_info(stream);
         if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
         {
-            ret.latency += (latency_usec * 0.000001);
+            latency = latency_usec * 0.000001;
+            ret.latency += latency;
             ret.hardQueued += ret.latency; // TODO
+            log_info("get_latency_info(): added %lf seconds of latency from stream", latency);
         }
         else
         {
@@ -329,8 +355,10 @@ output_v8::latencyInfo_t output_pulse::get_latency_info()
 
             if (g_pa_stream_get_latency(stream, &latency_usec, NULL) == 0)
             {
-                ret.latency += (latency_usec * 0.000001);
+                latency = latency_usec * 0.000001;
+                ret.latency += latency;
                 ret.hardQueued += ret.latency; // TODO
+                log_info("get_latency_info(): added %lf seconds of latency from stream after timing info update", latency);
             }
             else
             {
